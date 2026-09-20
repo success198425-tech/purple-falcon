@@ -5,10 +5,10 @@ exports to the existing Falcon UI without duplicating the chat application.
 """
 from __future__ import annotations
 
-import json
 import shutil
 import tempfile
 from argparse import Namespace
+from datetime import datetime, timezone
 from pathlib import Path
 
 import gradio as gr
@@ -48,7 +48,12 @@ def _analyze_uploads(uploads, group_by, value, top, formats):
     out = Path(tempfile.mkdtemp(prefix="purple_falcon_analysis_"))
     raw = out / "raw_files"
     raw.mkdir()
-    report = {"files": [], "executive_summary": ""}
+    # export_reports expects generated_at because it writes it into DOCX metadata.
+    report = {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "files": [],
+        "executive_summary": "",
+    }
     frames = []
     args = Namespace(group_by=(group_by or None), value=(value or None), top=int(top or 10))
 
@@ -71,7 +76,7 @@ def _analyze_uploads(uploads, group_by, value, top, formats):
         f"with {rows:,} total row(s). Review missing values, duplicates, outliers, and source context "
         "before making decisions."
     )
-    export_reports(report, frames, out, set(formats), raw)
+    export_reports(report, frames, out, set(formats or []), raw)
 
     files = [str(p) for p in sorted(out.rglob("*")) if p.is_file()]
     charts = [p for p in files if p.lower().endswith(".png")]

@@ -31,7 +31,7 @@ def imports():
     try:
         import pandas as pd
         import matplotlib.pyplot as plt
-    except ImportError as exc:
+    except ImportError:
         die("Install dependencies first: pip install -r requirements-analysis.txt")
     return pd, plt
 
@@ -61,7 +61,6 @@ def read_file(path: Path, pd):
             return pd.read_csv(path, sep="\t" if ext == ".tsv" else ","), "table"
         if ext in {".xlsx", ".xls"}:
             sheets = pd.read_excel(path, sheet_name=None)
-            # Keep the first non-empty sheet; all sheets are represented in metadata.
             frame = next((df for df in sheets.values() if not df.empty), pd.DataFrame())
             return frame, "table"
         if ext == ".json":
@@ -145,6 +144,10 @@ def analyze_text(text: str, name: str) -> dict[str, Any]:
 
 
 def export_reports(report: dict, frames: list[tuple[str, Any]], out: Path, formats: set[str], raw_dir: Path) -> None:
+    # Keep this function safe for callers that construct a minimal report object.
+    report.setdefault("generated_at", datetime.now(timezone.utc).isoformat())
+    report.setdefault("files", [])
+    report.setdefault("executive_summary", "")
     pd, _ = imports()
     if "xlsx" in formats:
         with pd.ExcelWriter(out / "analysis.xlsx", engine="openpyxl") as writer:
