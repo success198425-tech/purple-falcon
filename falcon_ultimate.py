@@ -3447,7 +3447,7 @@ if __name__ == "__main__":
     if skills:
         learner = skills.start_learner()
         print("🧠 Self-study: ON — every hour I refresh topics you ask about (turn off: PF_LEARN=0)" if learner else "🧠 Self-study: off")
-    PUBLIC_HOST = os.getenv("PF_PUBLIC_HOST", "127.0.0.1")
+    PUBLIC_HOST = os.getenv("PF_PUBLIC_HOST", "0.0.0.0")
 
     demo.launch(
         server_name=PUBLIC_HOST,
