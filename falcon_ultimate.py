@@ -2,7 +2,7 @@
 
 
 # ==================================================
-# 💜 PURPLE FALCON PH v6.0.5 — LIVE SKILLS + SELF-LEARNING + FILE ANALYST + NEWS + LOGO + IMAGE/VIDEO 🇵🇭
+# 💜 PURPLE FALCON PH v6.0.6 — LIVE SKILLS + SELF-LEARNING + FILE ANALYST + NEWS + LOGO + IMAGE/VIDEO 🇵🇭
 # ==================================================
 #   ✅ Live skills that learn: weather, exchange rates, world clock, Wikipedia, web search, web pages, earthquakes, dictionary,
 #      country facts, calculator — used whenever the AI model can't answer or is unreachable (falcon_skills.py)
@@ -139,7 +139,7 @@ CODE_ANALYSIS_CHUNK_CHARS = 24000
 CODE_ANALYSIS_OVERLAP_CHARS = 1200
 DEFAULT_MAX_TOKENS = 2000
 CODE_MAX_TOKENS = 8000           # no artificial line/length ceiling on generated code — let the model finish it
-GROQ_VISION_MODEL = os.getenv("GROQ_VISION_MODEL", "llama-3.2-11b-vision-preview")
+GROQ_VISION_MODEL = os.getenv("GROQ_VISION_MODEL", "qwen/qwen3.8-27b")
 OPENROUTER_VISION_MODEL = os.getenv("OPENROUTER_VISION_MODEL", "google/gemini-3-flash-preview")
 OPENROUTER_VISION_FALLBACK_MODELS = [m.strip() for m in os.getenv("OPENROUTER_VISION_FALLBACK_MODELS", "").split(",") if m.strip()]
 VISION_FALLBACK_REASONING = os.getenv("PF_VISION_FALLBACK_REASONING", "1").strip().lower() not in ("0","false","no","off")
@@ -271,7 +271,7 @@ except ImportError:
     websearch, WEB_STATUS = None, "⚠️ falcon_websearch.py not found next to this script"
 
 print("=" * 60)
-print("💜 PURPLE FALCON PH v6.0.5 — PROTECTED 🇵🇭")
+print("💜 PURPLE FALCON PH v6.0.6 — PROTECTED 🇵🇭")
 if ENV_PATH:
     print(f"   .env file:     {'✅' if not ENV_PROBLEMS else '⚠️'} {ENV_LOADED} setting(s) read")
     for _p in ENV_PROBLEMS: print(f"                  ↳ {_p}")
@@ -363,7 +363,7 @@ def build_status_bar_html():
              ("Database", "Not Connected", False)]
     parts = "".join(f'<div class="pf-status-item{" ok" if ok else ""}"><span class="dot"></span><span>{name}: {state}</span></div>'
                     for name, state, ok in items)
-    return parts + '<div class="pf-status-item"><span>Purple Falcon AI v6.0.5</span></div>'
+    return parts + '<div class="pf-status-item"><span>Purple Falcon AI v6.0.6</span></div>'
 
 def build_sidebar_nav_html():
     soon = lambda icon, label: (f'<div class="pf-nav-item disabled"><span>{icon}</span>'
@@ -1995,9 +1995,35 @@ def build_universal_vision_question(message):
         user = "Analyze this image and give useful feedback."
     return UNIVERSAL_VISION_PROMPT + "\nUSER REQUEST:\n" + user
 
+def falcon_vision_prompt(message):
+    user=(message or "").strip() or "Check this image."
+    return f"""You are Purple Falcon Eyes, the visual perception layer of Purple Falcon.
+Analyze only what the image visibly supports. Do not guess hidden facts.
+Return a useful observation for the Falcon reasoning brain using:
+- What Purple Falcon sees
+- Visible text, if relevant
+- Important objects/conditions
+- What appears OK / needs attention, only if an explicit standard or visible defect supports it
+- Unknowns that cannot be verified from the image
+- Direct answer to the user's request
+USER REQUEST: {user}"""
+
+def falcon_reason_over_vision(user_message, visual_observation, history_messages):
+    """Send verified visual observations to every working general brain chain for contextual reasoning."""
+    if not visual_observation or not visual_observation.strip(): return visual_observation
+    reasoning_prompt=("PURPLE FALCON EYES produced the following visual observation. Treat it as the visual evidence for this turn. "
+                      "Reason over it together with the user's request and recent conversation. Do not claim visual details that are absent from the observation. "
+                      "Answer naturally as Purple Falcon; do not mention provider routing unless a provider failure prevents the task.\n\n"
+                      f"USER REQUEST:\n{user_message}\n\nVISUAL EVIDENCE:\n{visual_observation}")
+    msgs=list(history_messages or [])
+    if not msgs or msgs[0].get('role')!='system': msgs=[{'role':'system','content':get_system_prompt()}]+msgs
+    msgs.append({'role':'user','content':reasoning_prompt})
+    reasoned=call_ai(msgs, temperature=0.55, max_tokens=1800)
+    return visual_observation if ai_failed(reasoned) else reasoned.strip()
+
 def call_ai_vision(message, image_paths, history_messages, temperature=0.7, max_tokens=1500):
     """Sends up to 4 images + text to a vision-capable model. Tries Groq, then OpenRouter."""
-    content = [{"type": "text", "text": build_universal_vision_question(message)}]
+    content = [{"type": "text", "text": falcon_vision_prompt(message)}]
     used = 0
     for p in image_paths[:4]:
         url = encode_image_data_url(p)
@@ -2033,7 +2059,8 @@ def call_ai_vision(message, image_paths, history_messages, temperature=0.7, max_
                 if isinstance(text, list):  # some providers return content blocks instead of a plain string
                     text = "".join(b.get("text", "") for b in text if isinstance(b, dict))
                 if text and text.strip():
-                    return text.strip()
+                    visual=text.strip()
+                    return falcon_reason_over_vision(message, visual, history_messages)
                 print(f"⚠️ {name}: empty reply")
             elif r.status_code in (401, 402, 403):
                 print(f"⚠️ {name}: key rejected or out of credits (HTTP {r.status_code})")
@@ -2048,16 +2075,13 @@ def call_ai_vision(message, image_paths, history_messages, temperature=0.7, max_
             print(f"⚠️ {name} failed: {e}")
     configured=[name for name, *_ in providers]
     print(f"⚠️ Vision unavailable — configured={configured or ['none']} failures={vision_failures[-4:]}")
+    # Purple Falcon response stays natural; technical provider details remain in Render logs.
     if not configured:
-        return "👁️ Nakuha ko ang image attachment, pero walang configured vision-capable provider. Hindi ako huhula sa laman ng image. Kailangan ng vision provider para sa visual analysis."
-    if VISION_FALLBACK_REASONING:
-        # Fallback reasoning is about recovery/next action only. A text-only model cannot truthfully infer unseen pixels.
-        failure_summary = ", ".join(vision_failures[-3:]) or "all configured vision routes returned no usable analysis"
-        return ("👁️ **Vision fallback reasoning activated.** Nakuha at na-validate ko ang image attachment, pero walang vision model na nakapagbigay ng usable visual result. "
-                f"**Recovery assessment:** {failure_summary}. Sinubukan ko ang configured vision routes in order. "
-                "Hindi ako gagawa ng pekeng image description gamit lang ang text fallback, dahil wala itong access sa image pixels. "
-                "Next action: verify the vision model/API availability or configure another multimodal fallback model, then I can retry the same attached image.")
-    return "👁️ Image received, but every configured vision route failed. I kept the attachment context and did not invent a visual answer."
+        return ("👁️ **Purple Falcon Eyes is temporarily unavailable.** I received the image correctly, but none of my visual brains are online right now. "
+                "I’ll keep the conversation context, and I won’t invent details I cannot actually see. Once a visual brain is available, send or paste the image again and I’ll inspect it directly.")
+    return ("👁️ **Purple Falcon Eyes received the image, but my visual brains did not complete the inspection.** "
+            "The attachment itself is OK. I’m keeping the current conversation context and I won’t guess about the image. "
+            "Please retry the same image after the visual route recovers; my other reasoning brains remain available for non-visual parts of the task.")
 
 # ==================================================
 # 🖥️ RUN CODE — executes a code block from the chat locally (Python / Bash / Node.js)
@@ -3529,7 +3553,7 @@ with gr.Blocks(title=TITLE, **blocks_kwargs) as demo:
                 'Tap 🎤 in the composer to speak, or toggle spoken replies below.</div>')
         gr.HTML(f'<div class="pf-settings-group-title">About</div>'
                 f'<div style="font-size:.78rem;color:var(--pf-text2);line-height:1.6">'
-                f'Purple Falcon AI v6.0.5<br>Code execution: {"On" if RUN_CODE_ENABLED else "Off"}<br>'
+                f'Purple Falcon AI v6.0.6<br>Code execution: {"On" if RUN_CODE_ENABLED else "Off"}<br>'
                 f'Chat AI: {"Connected" if AI_CONFIGURED else "Not configured"}</div>')
 
     pending_file = gr.State(None)
