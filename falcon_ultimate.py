@@ -2,7 +2,7 @@
 
 
 # ==================================================
-# 💜 PURPLE FALCON PH v3.6 — LIVE SKILLS + SELF-LEARNING + FILE ANALYST + NEWS + LOGO + IMAGE/VIDEO 🇵🇭
+# 💜 PURPLE FALCON PH v3.7 — LIVE SKILLS + SELF-LEARNING + FILE ANALYST + NEWS + LOGO + IMAGE/VIDEO 🇵🇭
 # ==================================================
 #   ✅ Live skills that learn: weather, exchange rates, world clock, Wikipedia, web search, web pages, earthquakes, dictionary,
 #      country facts, calculator — used whenever the AI model can't answer or is unreachable (falcon_skills.py)
@@ -269,7 +269,7 @@ except ImportError:
     websearch, WEB_STATUS = None, "⚠️ falcon_websearch.py not found next to this script"
 
 print("=" * 60)
-print("💜 PURPLE FALCON PH v3.6 — PROTECTED 🇵🇭")
+print("💜 PURPLE FALCON PH v3.7 — PROTECTED 🇵🇭")
 if ENV_PATH:
     print(f"   .env file:     {'✅' if not ENV_PROBLEMS else '⚠️'} {ENV_LOADED} setting(s) read")
     for _p in ENV_PROBLEMS: print(f"                  ↳ {_p}")
@@ -361,7 +361,7 @@ def build_status_bar_html():
              ("Database", "Not Connected", False)]
     parts = "".join(f'<div class="pf-status-item{" ok" if ok else ""}"><span class="dot"></span><span>{name}: {state}</span></div>'
                     for name, state, ok in items)
-    return parts + '<div class="pf-status-item"><span>Purple Falcon AI v3.6</span></div>'
+    return parts + '<div class="pf-status-item"><span>Purple Falcon AI v3.7</span></div>'
 
 def build_sidebar_nav_html():
     soon = lambda icon, label: (f'<div class="pf-nav-item disabled"><span>{icon}</span>'
@@ -2978,7 +2978,7 @@ def web_evidence_confidence(items, important=False):
 # ==================================================
 # 🧠 ANSWERING — real-world questions are checked live; if the AI model is unreachable, skills answer instead
 # ==================================================
-AI_CONFIGURED = bool(PEEPAK_ENABLED or GEMINI_API_KEY or GROQ_API_KEY or OPENROUTER_API_KEY or HF_API_KEY or POLLINATIONS_API_KEY)
+AI_CONFIGURED = True  # call_ai always attempts local Peepak before cloud providers
 _AI_FAIL_PREFIXES = ("⚠️", "😔")
 _SMALLTALK = re.compile(r"^\s*(hi|hello|hey|kumusta|kamusta|musta|good (morning|afternoon|evening|day)|yo|thanks?|thank you|salamat|ok|okay|sige|bye|paalam)\b[\s\S]{0,30}$", re.I)
 _OPEN_QUESTION = re.compile(r"^\s*(who|what|where|when|why|how|sino|ano|saan|kailan|paano|bakit|tell me about|explain)\b", re.I)
@@ -2989,71 +2989,55 @@ def ai_failed(reply):
 PF_CONTEXT_RECENT_MESSAGES = max(4, int(os.getenv("PF_CONTEXT_RECENT_MESSAGES", "16")))
 PF_CONTEXT_HISTORY_MESSAGES = max(PF_CONTEXT_RECENT_MESSAGES, int(os.getenv("PF_CONTEXT_HISTORY_MESSAGES", "80")))
 PF_CONTEXT_MAX_CHARS = max(4000, int(os.getenv("PF_CONTEXT_MAX_CHARS", "18000")))
-PF_CONTEXT_KB_ITEMS = max(0, int(os.getenv("PF_CONTEXT_KB_ITEMS", "4")))
 PF_WEB_LAST_RESORT = os.getenv("PF_WEB_LAST_RESORT", "1").strip().lower() not in ("0","false","no","off")
 
 def _history_before_current_turn(request=None):
-    history = list(load_chat(request).get("messages") or [])
-    # stage() saves the current user turn before chat_reply(), so remove exactly that last user turn.
-    if history and history[-1].get("role") == "user": history = history[:-1]
-    return history
-
-def _compact_history(messages, max_chars=6500):
-    lines=[]
-    for m in messages:
-        role = "User" if m.get("role") == "user" else "Assistant"
-        text = re.sub(r"\s+", " ", str(m.get("text") or "")).strip()
-        if not text: continue
-        if len(text)>700: text=text[:470]+" ... "+text[-190:]
-        lines.append(f"{role}: {text}")
-    return "\n".join(lines)[-max_chars:]
+    h=list(load_chat(request).get("messages") or [])
+    if h and h[-1].get("role")=="user": h=h[:-1]
+    return h
 
 def build_conversation_context(current_message, request=None):
-    history=_history_before_current_turn(request)[-PF_CONTEXT_HISTORY_MESSAGES:]
-    recent=history[-PF_CONTEXT_RECENT_MESSAGES:]
-    older=history[:-PF_CONTEXT_RECENT_MESSAGES]
-    recent_msgs=[]
+    h=_history_before_current_turn(request)[-PF_CONTEXT_HISTORY_MESSAGES:]
+    recent=h[-PF_CONTEXT_RECENT_MESSAGES:]
+    older=h[:-PF_CONTEXT_RECENT_MESSAGES]
+    def squash(items, cap=6000):
+        out=[]
+        for m in items:
+            text=re.sub(r"\s+"," ",str(m.get("text") or "")).strip()
+            if text:
+                if len(text)>650: text=text[:450]+" ... "+text[-160:]
+                out.append(("User" if m.get("role")=="user" else "Assistant")+": "+text)
+        return "\n".join(out)[-cap:]
+    msgs=[]
     for m in recent:
         text=str(m.get("text") or "").strip()
-        if text: recent_msgs.append({"role":"user" if m.get("role")=="user" else "assistant","content":text})
-    query="\n".join([current_message or ""]+[m["content"] for m in recent_msgs if m["role"]=="user"][-4:])
-    hits=retrieve_local_knowledge(query, limit=PF_CONTEXT_KB_ITEMS) if PF_CONTEXT_KB_ITEMS else []
-    knowledge="\n".join(f"- [{'verified' if x.get('verified') else 'stored-unverified'}] {x.get('topic','Knowledge')}: {str(x.get('content',''))[:1000]}" for x in hits)
-    return {"older":_compact_history(older),"recent_messages":recent_msgs,"knowledge":knowledge}
+        if text: msgs.append({"role":"user" if m.get("role")=="user" else "assistant","content":text})
+    return {"older":squash(older),"recent_messages":msgs}
 
 def context_text(packet):
     parts=[]
-    if packet.get("older"): parts.append("OLDER CONVERSATION CONTEXT:\n"+packet["older"])
+    if packet.get("older"): parts.append("OLDER CONVERSATION:\n"+packet["older"])
     if packet.get("recent_messages"):
         parts.append("RECENT CONVERSATION:\n"+"\n".join(("User" if m["role"]=="user" else "Assistant")+": "+m["content"] for m in packet["recent_messages"]))
-    if packet.get("knowledge"): parts.append("RELEVANT LOCAL KNOWLEDGE:\n"+packet["knowledge"])
     return "\n\n".join(parts)[-PF_CONTEXT_MAX_CHARS:]
 
 def contextualize_web_query(message, request=None):
     current=sanitize_web_query(message)
     if not current: return ""
-    packet=build_conversation_context(message, request)
+    packet=build_conversation_context(message,request)
     prior=[sanitize_web_query(m["content"]) for m in packet["recent_messages"] if m["role"]=="user"][-4:]
     prior=[x for x in prior if x and x.lower()!=current.lower()]
-    ambiguous=len(current.split())<=16 or bool(re.search(r"\b(?:it|this|that|these|those|same|again|still|there|they|previous|continue)\b", current,re.I))
+    ambiguous=len(current.split())<=16 or bool(re.search(r"\b(?:it|this|that|same|again|still|previous|continue|here|there)\b",current,re.I))
     return (("context: "+" ; ".join(prior)+" | current: "+current) if ambiguous and prior else current)[:750]
 
-def last_resort_web_answer(message, request=None):
-    """Final fallback: search web with conversation-aware query, then synthesize with the same memory packet."""
-    if not PF_WEB_LAST_RESORT or not websearch or not getattr(websearch,"ENABLED",False): return None
-    return web_answer(message, request=request, use_ai=True)
-
 def _ai_messages(message, paths, request=None):
-    packet=build_conversation_context(message, request)
-    system=get_system_prompt()
-    memory=context_text(packet)
-    if memory:
-        system += "\n\nCONVERSATION MEMORY:\n"+memory+"\n\nUse this memory to resolve follow-up references. Current user message has priority. Stored-unverified knowledge is not verified fact."
+    packet=build_conversation_context(message,request)
+    system=get_system_prompt(); memory=context_text(packet)
+    if memory: system += "\n\nCONVERSATION MEMORY:\n"+memory+"\n\nUse this to resolve follow-up references; current user message has priority."
     msgs=[{"role":"system","content":system}]
     if is_coding_request(message): msgs[0]["content"] += "\n\n"+CODING_ADDENDUM.format(mode=coding_task_mode(message))
     if is_math_request(message): msgs[0]["content"] += "\n\n"+MATH_REASONING_ADDENDUM
-    msgs.extend(packet["recent_messages"])
-    msgs.append({"role":"user","content":build_user_prompt(message, paths)})
+    msgs.extend(packet["recent_messages"]); msgs.append({"role":"user","content":build_user_prompt(message,paths)})
     return msgs
 
 def _news_for_skills(query):
@@ -3307,12 +3291,15 @@ def chat_reply(message, paths, request=None):
                            "Execution runs with the configured timeout.]\n" + execution_result)
     reply = call_ai(_ai_messages(ai_message, paths, request)) if AI_CONFIGURED else ""
     if reply == CHAT_PROVIDER_FALLBACK:
-        if web_ok:                                   # every AI provider is down → answer from the web
+        memory_blob = context_text(build_conversation_context(message, request))
+        local_reply = offline_reasoning_reply(message + "\n" + memory_blob)
+        if local_reply:
+            return local_reply, []
+        if web_ok and PF_WEB_LAST_RESORT:
             ans = web_answer(message, request, use_ai=False)
             if ans:
-                return ans, []
-        local_reply = offline_reasoning_reply(message)
-        return (local_reply or reply), []
+                return ans + "\n\n🌐 *Recovered through context-aware web fallback.*", []
+        reply = ""  # continue into remaining fallback chain instead of stopping on provider apology
     if not ai_failed(reply):
         if web_ok and websearch.reply_is_unsure(reply):   # the model admits it doesn't know → check the web
             ans = web_answer(message, request)
@@ -3337,13 +3324,14 @@ def chat_reply(message, paths, request=None):
         res = skills.research(message, generic=True)
         if res.ok:
             return skills.compose(res, "🧠 My AI brain is resting, so I checked live sources for you:") + tip, res.keys
-    local_query = message + "\n" + context_text(build_conversation_context(message, request))
-    local_reply = offline_reasoning_reply(local_query)
+    memory_blob = context_text(build_conversation_context(message, request))
+    local_reply = offline_reasoning_reply(message + "\n" + memory_blob)
     if local_reply:
         return local_reply + tip, []
-    web_last = last_resort_web_answer(message, request)
-    if web_last:
-        return web_last + "\n\n🌐 *All AI/local-memory fallbacks were insufficient, so Purple Falcon used conversation-aware web fallback.*", []
+    if web_ok and PF_WEB_LAST_RESORT:
+        ans = web_answer(message, request, use_ai=False)
+        if ans:
+            return ans + "\n\n🌐 *Recovered through final context-aware web fallback.*", []
     return (skills.friendly_fallback(message) if skills else "🧠 My AI brain is resting right now — please try again in a moment. 💜") + tip, []
 
 def last_skill_keys(request=None):
@@ -3579,7 +3567,7 @@ with gr.Blocks(title=TITLE, **blocks_kwargs) as demo:
                 'Tap 🎤 in the composer to speak, or toggle spoken replies below.</div>')
         gr.HTML(f'<div class="pf-settings-group-title">About</div>'
                 f'<div style="font-size:.78rem;color:var(--pf-text2);line-height:1.6">'
-                f'Purple Falcon AI v3.6<br>Code execution: {"On" if RUN_CODE_ENABLED else "Off"}<br>'
+                f'Purple Falcon AI v3.7<br>Code execution: {"On" if RUN_CODE_ENABLED else "Off"}<br>'
                 f'Chat AI: {"Connected" if AI_CONFIGURED else "Not configured"}</div>')
 
     pending_file = gr.State(None)
@@ -3705,6 +3693,6 @@ if __name__ == "__main__":
         server_name=PUBLIC_HOST,
         server_port=int(os.getenv("PORT", "7860")),
         share=SHARE_PUBLIC_LINK,  # DITO dapat True para magka public URL
-        show_error=os.getenv("PF_SHOW_ERROR", "0").strip().lower() in ("1","true","yes","on"),
+        show_error=True,
         **launch_style,
     )
