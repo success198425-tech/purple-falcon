@@ -2,7 +2,7 @@
 
 
 # ==================================================
-# 💜 PURPLE FALCON PH v4.3 — LIVE SKILLS + SELF-LEARNING + FILE ANALYST + NEWS + LOGO + IMAGE/VIDEO 🇵🇭
+# 💜 PURPLE FALCON PH v4.4 — LIVE SKILLS + SELF-LEARNING + FILE ANALYST + NEWS + LOGO + IMAGE/VIDEO 🇵🇭
 # ==================================================
 #   ✅ Live skills that learn: weather, exchange rates, world clock, Wikipedia, web search, web pages, earthquakes, dictionary,
 #      country facts, calculator — used whenever the AI model can't answer or is unreachable (falcon_skills.py)
@@ -269,7 +269,7 @@ except ImportError:
     websearch, WEB_STATUS = None, "⚠️ falcon_websearch.py not found next to this script"
 
 print("=" * 60)
-print("💜 PURPLE FALCON PH v4.3 — PROTECTED 🇵🇭")
+print("💜 PURPLE FALCON PH v4.4 — PROTECTED 🇵🇭")
 if ENV_PATH:
     print(f"   .env file:     {'✅' if not ENV_PROBLEMS else '⚠️'} {ENV_LOADED} setting(s) read")
     for _p in ENV_PROBLEMS: print(f"                  ↳ {_p}")
@@ -361,7 +361,7 @@ def build_status_bar_html():
              ("Database", "Not Connected", False)]
     parts = "".join(f'<div class="pf-status-item{" ok" if ok else ""}"><span class="dot"></span><span>{name}: {state}</span></div>'
                     for name, state, ok in items)
-    return parts + '<div class="pf-status-item"><span>Purple Falcon AI v4.3</span></div>'
+    return parts + '<div class="pf-status-item"><span>Purple Falcon AI v4.4</span></div>'
 
 def build_sidebar_nav_html():
     soon = lambda icon, label: (f'<div class="pf-nav-item disabled"><span>{icon}</span>'
@@ -1589,15 +1589,14 @@ If attached source includes a truncation marker, explicitly limit conclusions to
 For test-writing requests, produce a test matrix and executable tests at unit, integration, and end-to-end levels where the supplied project supports them. Include boundary values, empty/malformed input, failure paths, permissions/security-relevant cases, and regression cases. Reuse the project's actual framework, fixtures, APIs, and naming conventions; mark unavailable dependencies instead of inventing them.
 Do not generate media unless the user's natural-language request explicitly asks for it; words inside code do not count."""
 
-_CODEY_HINT = re.compile(r"```|\bcode\b|\bcoding\b|\bfunction\b|\bscript\b|\bprogram\b|\balgorithm\b|\bimplement\b|\b(?:write|create|make|build|generate|give me|show me)\b.{0,35}\b(?:code|program|function|class|script|example|sample)\b", re.I)
+_CODEY_HINT = re.compile(r"```|\bcode\b|\bfunction\b|\bscript\b|\bimplement\b|\bwrite (a|an|the) (program|function|class|script)\b", re.I)
 _CODE_TASK_RE = re.compile(
     r"\b(debug|troubleshoot|refactor|compile|lint|type.?check|stack trace|traceback|exception)\b"
     r"|\b(?:unit|integration|end[- ]to[- ]end|e2e)\s+tests?\b|\btest(?:ing| writing)\b"
     r"|\b(?:fix|review|explain|analy[sz]e|edit|change|modify|refactor|optimi[sz]e|implement|write|test|run|execute)\b"
     r".{0,50}\b(?:code|coding|script|program|function|class|snippet|algorithm|logic|bug|error|tests?|it|this)\b"
     r"|\b(?:code|coding|script|program|function|class|snippet|algorithm|logic|bug|error)\b"
-    r".{0,30}\b(?:fix|review|explain|analy[sz]e|edit|change|modify|debug|refactor|optimi[sz]e|implement|test|run|execute)\b"
-    r"|\b(?:give|show|write|create|make|build|generate|provide)\b.{0,60}\b(?:sample|example|code|program|script|function|algorithm)\b",
+    r".{0,30}\b(?:fix|review|explain|analy[sz]e|edit|change|modify|debug|refactor|optimi[sz]e|implement|test|run|execute)\b",
     re.I)
 _CODE_FENCE_RE = re.compile(r"```([\w.+-]*)[ \t]*\r?\n?(.*?)```", re.S)
 _CODE_SYNTAX_RE = re.compile(
@@ -1663,7 +1662,7 @@ def large_code_inputs(message, paths):
 def is_coding_request(message):
     text = message or ""
     prose = _CODE_FENCE_RE.sub(" ", text)
-    if _CODE_TASK_RE.search(prose) or _CODEY_HINT.search(prose):
+    if _CODE_TASK_RE.search(prose):
         return True
     blocks = _CODE_FENCE_RE.findall(text)
     if blocks:
@@ -3174,9 +3173,55 @@ def maybe_trace_plan(plan):
     if PF_ORCH_DEBUG:
         print('🧠 ORCHESTRATOR', {k:v for k,v in plan.items() if k != 'reasons'}, 'reasons=', plan['reasons'])
 
+# ==================================================
+# 🧠 MEMORY-FIRST CONVERSATION ROUTER
+# ==================================================
+_CTX_FOLLOWUP_RE = re.compile(r"\b(?:bakit|why|ano(?:ng)? nangyari|what happened|paano|how|tuloy|continue|ulit|again|previous|last answer|sagot|answer|ito|iyan|yan|yun|yung|that|this|it)\b", re.I)
+_CTX_MEMORY_RE = re.compile(r"\b(?:memory|remember|naalala|natatandaan|conversation|pinag.?uusapan|discussing|previous topic)\b", re.I)
+
+def history_before_current(request=None, limit=24):
+    hist=list(load_chat(request).get('messages') or [])
+    if hist and hist[-1].get('role')=='user': hist=hist[:-1]
+    out=[]
+    for m in hist[-limit:]:
+        text=re.sub(r"\s+"," ",str(m.get('text') or '')).strip()
+        if text: out.append({'role':m.get('role','assistant'),'text':text})
+    return out
+
+def is_contextual_followup(message):
+    text=(message or '').strip()
+    return bool(text) and len(text.split()) <= 24 and bool(_CTX_FOLLOWUP_RE.search(text) or _CTX_MEMORY_RE.search(text))
+
+def recover_conversation_context(message, request=None):
+    hist=history_before_current(request)
+    users=[m['text'] for m in hist if m['role']=='user']
+    assistants=[m['text'] for m in hist if m['role']=='assistant']
+    # skip previous complaint/meta turns when looking for the substantive subject
+    substantive=[]
+    for text in users:
+        if not is_contextual_followup(text) or len(text.split()) > 12:
+            substantive.append(text)
+    topic=(substantive[-1] if substantive else (users[-1] if users else ''))
+    return {'topic':topic,'last_user':users[-1] if users else '', 'last_assistant':assistants[-1] if assistants else ''}
+
+def offline_context_reply(message, request=None):
+    ctx=recover_conversation_context(message,request)
+    if not ctx['topic']:
+        return "🧠 I still have the memory subsystem, but there is not enough earlier conversation in this session to reconstruct the subject."
+    if _CTX_MEMORY_RE.search(message or ''):
+        return ("🧠 **The conversation memory is still available.** The main AI provider is unavailable, but that should not erase our topic. "
+                f"The most recent substantive topic I can recover is: **{ctx['topic']}**. "
+                "I will keep this as the active context and I will not web-search the phrase asking about my memory.")
+    return ("🧠 I should answer this from our conversation, not from a literal web search. "
+            f"The active earlier topic I recovered is: **{ctx['topic']}**. "
+            "The previous provider failure caused the response problem; the conversation itself is still available.")
+
 def chat_reply(message, paths, request=None):
     """→ (reply, skill keys). Never returns an error message: if the AI can't be reached, live skills answer instead."""
     tip = "" if AI_CONFIGURED else "\n\n💡 *Tip: add GROQ_API_KEY, GEMINI_API_KEY, or OPENROUTER_API_KEY to your .env file to unlock full AI conversation.*"
+    if not paths and is_contextual_followup(message):
+        # Memory/meta follow-ups are resolved locally FIRST. Never send complaint words to the web.
+        return offline_context_reply(message, request), []
     learn_match = should_remember_knowledge(message)
     if learn_match and not paths:
         fact = learn_match.group(1).strip()
@@ -3196,7 +3241,7 @@ def chat_reply(message, paths, request=None):
     live_ok = bool(skills) and not paths and bool(message) and not coding_request
     web_ok = bool(websearch) and websearch.ENABLED and not paths and bool(message) and not coding_request
     # 1) real-world question → look it up live first, then let the AI explain what was found
-    if live_ok and not coding_request and skills.wants_live(message) and orch.get('route') != 'safe-web':
+    if live_ok and not is_contextual_followup(message) and skills.wants_live(message) and orch.get('route') != 'safe-web':
         res = skills.research(message)
         if res.ok:
             reply = call_ai(skills.grounded_messages(message, res)) if AI_CONFIGURED else ""
@@ -3204,7 +3249,7 @@ def chat_reply(message, paths, request=None):
                 return f"{reply.strip()}\n\n{skills.sources_footer(res)}".strip(), res.keys
             return skills.compose(res, "🧠 My AI brain is resting, so here's what I found live:") + tip, res.keys
     # 1b) needs fresh / verifiable info (or the user said "search…") → answer from the live web
-    if web_ok and not coding_request and (orch.get('needs_web') or websearch.should_search(message)):
+    if web_ok and not is_contextual_followup(message) and (orch.get('needs_web') or websearch.should_search(message)):
         ans = web_answer(message, request)
         if ans:
             return ans, []
@@ -3251,24 +3296,23 @@ def chat_reply(message, paths, request=None):
                            "Execution runs with the configured timeout.]\n" + execution_result)
     reply = call_ai(_ai_messages(ai_message, paths, request)) if AI_CONFIGURED else ""
     if reply == CHAT_PROVIDER_FALLBACK:
-        if coding_request:
-            return ("🛠️ **Coding request detected correctly, but all configured AI coding providers are unavailable.** "
-                    "I will not turn this into a generic web search because unrelated search snippets cannot safely generate the requested program. "
-                    "Restore at least one reasoning provider (Gemini, Groq, OpenRouter, Hugging Face, or local Ollama/Peepak), then resend the same request. "
-                    "If you attach an existing code file, deterministic syntax/file tools can still inspect supported parts while offline." + tip), []
+        if is_contextual_followup(message):
+            return offline_context_reply(message, request), []
+        local_reply = offline_reasoning_reply(message)
+        if local_reply:
+            return local_reply, []
         if web_ok:
             ans = web_answer(message, request, use_ai=False)
             if ans:
                 return ans, []
-        local_reply = offline_reasoning_reply(message)
-        return (local_reply or reply), []
+        return reply, []
     if not ai_failed(reply):
         if web_ok and websearch.reply_is_unsure(reply):   # the model admits it doesn't know → check the web
             ans = web_answer(message, request)
             if ans:
                 return ans, []
         return reply, []
-    if web_ok and not coding_request:                # never turn coding creation into generic web retrieval
+    if web_ok and not is_contextual_followup(message): # contextual follow-ups must remain conversation-bound
         ans = web_answer(message, request, use_ai=False)
         if ans:
             return ans, []
@@ -3524,7 +3568,7 @@ with gr.Blocks(title=TITLE, **blocks_kwargs) as demo:
                 'Tap 🎤 in the composer to speak, or toggle spoken replies below.</div>')
         gr.HTML(f'<div class="pf-settings-group-title">About</div>'
                 f'<div style="font-size:.78rem;color:var(--pf-text2);line-height:1.6">'
-                f'Purple Falcon AI v4.3<br>Code execution: {"On" if RUN_CODE_ENABLED else "Off"}<br>'
+                f'Purple Falcon AI v4.4<br>Code execution: {"On" if RUN_CODE_ENABLED else "Off"}<br>'
                 f'Chat AI: {"Connected" if AI_CONFIGURED else "Not configured"}</div>')
 
     pending_file = gr.State(None)
