@@ -2,7 +2,7 @@
 
 
 # ==================================================
-# 💜 PURPLE FALCON PH v6.0.2 — LIVE SKILLS + SELF-LEARNING + FILE ANALYST + NEWS + LOGO + IMAGE/VIDEO 🇵🇭
+# 💜 PURPLE FALCON PH v6.0.3 — LIVE SKILLS + SELF-LEARNING + FILE ANALYST + NEWS + LOGO + IMAGE/VIDEO 🇵🇭
 # ==================================================
 #   ✅ Live skills that learn: weather, exchange rates, world clock, Wikipedia, web search, web pages, earthquakes, dictionary,
 #      country facts, calculator — used whenever the AI model can't answer or is unreachable (falcon_skills.py)
@@ -269,7 +269,7 @@ except ImportError:
     websearch, WEB_STATUS = None, "⚠️ falcon_websearch.py not found next to this script"
 
 print("=" * 60)
-print("💜 PURPLE FALCON PH v6.0.2 — PROTECTED 🇵🇭")
+print("💜 PURPLE FALCON PH v6.0.3 — PROTECTED 🇵🇭")
 if ENV_PATH:
     print(f"   .env file:     {'✅' if not ENV_PROBLEMS else '⚠️'} {ENV_LOADED} setting(s) read")
     for _p in ENV_PROBLEMS: print(f"                  ↳ {_p}")
@@ -361,7 +361,7 @@ def build_status_bar_html():
              ("Database", "Not Connected", False)]
     parts = "".join(f'<div class="pf-status-item{" ok" if ok else ""}"><span class="dot"></span><span>{name}: {state}</span></div>'
                     for name, state, ok in items)
-    return parts + '<div class="pf-status-item"><span>Purple Falcon AI v6.0.2</span></div>'
+    return parts + '<div class="pf-status-item"><span>Purple Falcon AI v6.0.3</span></div>'
 
 def build_sidebar_nav_html():
     soon = lambda icon, label: (f'<div class="pf-nav-item disabled"><span>{icon}</span>'
@@ -899,13 +899,6 @@ body.pf-tools-open #pf-tools-link { background: var(--pf-bg3) !important; color:
     #pf-workspace-header { padding-left: .75rem !important; padding-right: .75rem !important; }
     #pf-status-bar { gap: .6rem !important; font-size: .64rem; flex-wrap: nowrap; overflow-x: auto; justify-content: flex-start !important; padding: 0 .6rem; }
 }
-@media (max-width: 480px) {
-    #pf-composer-area { padding: .35rem .45rem calc(.5rem + env(safe-area-inset-bottom, 0px)) !important; }
-    #pf-inputbar { min-height: 48px !important; gap: .3rem !important; padding: .3rem .35rem !important; }
-    #pf-msg textarea, #pf-msg input { font-size: 16px !important; max-height: 120px !important; }
-    #pf-plus, #pf-send, #pf-mic { min-width: 38px !important; width: 38px !important; min-height: 38px !important; height: 38px !important; }
-}
-@media (pointer: coarse) { #pf-plus, #pf-send, #pf-mic { touch-action: manipulation; } }
 @media (max-height: 520px) {
     #pf-composer-area { max-height: 58dvh; padding-top: .25rem !important; padding-bottom: .35rem !important; }
     #pf-inputbar { min-height: 46px !important; padding-top: .2rem !important; padding-bottom: .2rem !important; }
@@ -1066,55 +1059,70 @@ document.addEventListener('DOMContentLoaded', function(){
 """
 
 # ---------- paste an image straight into the message box ----------
-_PASTE_JS = """
+_PASTE_JS = r"""
 (function(){
-    function pfIsComposerTarget(target){
-        if (!target || !target.closest) return false;
-        return !!target.closest('#pf-composer-area, #pf-msg');
-    }
-    function pfMimeExt(mime){
-        mime=(mime||'image/png').toLowerCase();
-        if (mime.indexOf('png')>=0) return 'png';
-        if (mime.indexOf('webp')>=0) return 'webp';
-        if (mime.indexOf('gif')>=0) return 'gif';
-        if (mime.indexOf('bmp')>=0) return 'bmp';
-        return 'jpg';
-    }
-    document.addEventListener('paste', function(e){
-        // Only intercept clipboard images while the user is working in the composer.
-        if (!pfIsComposerTarget(e.target) && document.activeElement && !pfIsComposerTarget(document.activeElement)) return;
-        var cd=e.clipboardData || window.clipboardData;
-        if (!cd) return;
-        var images=[];
-        if (cd.items){
-            for (var i=0;i<cd.items.length;i++){
-                var item=cd.items[i];
-                if (item.kind==='file' && /^image\//i.test(item.type||'')){
-                    var f=item.getAsFile(); if(f) images.push(f);
-                }
-            }
+  function uploadInputs(){
+    return Array.from(document.querySelectorAll('#pf-plus input[type="file"], input[type="file"]')).filter(function(x){ return x && !x.disabled; });
+  }
+  function findUploadInput(){
+    var scoped=document.querySelector('#pf-plus input[type="file"]');
+    if(scoped) return scoped;
+    var all=uploadInputs();
+    return all.length ? all[0] : null;
+  }
+  function inComposer(target){
+    return !!(target && target.closest && target.closest('#pf-composer-area, #pf-msg'));
+  }
+  async function clipboardImages(e){
+    var out=[];
+    var cd=e.clipboardData || window.clipboardData;
+    if(cd && cd.items){
+      for(var i=0;i<cd.items.length;i++){
+        var item=cd.items[i];
+        if(item.kind==='file' && String(item.type||'').toLowerCase().startsWith('image/')){
+          var f=item.getAsFile(); if(f) out.push(f);
         }
-        if (!images.length && cd.files){
-            for (var j=0;j<cd.files.length;j++) if(/^image\//i.test(cd.files[j].type||'')) images.push(cd.files[j]);
-        }
-        if (!images.length) return; // plain text Ctrl+V remains normal
-        var input=document.querySelector('#pf-plus input[type="file"]');
-        if(!input){ console.warn('Purple Falcon: upload input not ready'); return; }
-        var dt=new DataTransfer();
-        // Keep attachments already selected, then append pasted screenshots.
-        if(input.files){ for(var k=0;k<input.files.length;k++) dt.items.add(input.files[k]); }
-        images.forEach(function(file,idx){
-            var mime=file.type || 'image/png';
-            var name=(file.name && file.name.indexOf('.')>0) ? file.name : ('screenshot-'+Date.now()+'-'+(idx+1)+'.'+pfMimeExt(mime));
-            dt.items.add(new File([file],name,{type:mime,lastModified:Date.now()}));
-        });
-        input.files=dt.files;
-        input.dispatchEvent(new Event('input',{bubbles:true}));
-        input.dispatchEvent(new Event('change',{bubbles:true}));
-        e.preventDefault();
-        e.stopPropagation();
-        try{ setTimeout(function(){ if(window.pfFitChat) window.pfFitChat(); },80); }catch(err){}
-    }, true);
+      }
+    }
+    if(!out.length && cd && cd.files){
+      for(var j=0;j<cd.files.length;j++) if(String(cd.files[j].type||'').toLowerCase().startsWith('image/')) out.push(cd.files[j]);
+    }
+    return out;
+  }
+  function extFor(mime){
+    mime=String(mime||'image/png').toLowerCase();
+    if(mime.includes('png')) return 'png';
+    if(mime.includes('webp')) return 'webp';
+    if(mime.includes('gif')) return 'gif';
+    if(mime.includes('bmp')) return 'bmp';
+    return 'jpg';
+  }
+  function attach(files){
+    var input=findUploadInput();
+    if(!input){ console.error('Purple Falcon Ctrl+V: file input not found'); return false; }
+    var dt=new DataTransfer();
+    if(input.files) for(var i=0;i<input.files.length;i++) dt.items.add(input.files[i]);
+    files.forEach(function(f,idx){
+      var mime=f.type || 'image/png';
+      var name=(f.name && f.name.includes('.')) ? f.name : ('screenshot-'+Date.now()+'-'+(idx+1)+'.'+extFor(mime));
+      try{ dt.items.add(new File([f],name,{type:mime,lastModified:Date.now()})); }catch(err){ dt.items.add(f); }
+    });
+    try{ input.files=dt.files; }catch(err){ console.error('Purple Falcon Ctrl+V: DataTransfer assignment failed',err); return false; }
+    input.dispatchEvent(new Event('input',{bubbles:true,composed:true}));
+    input.dispatchEvent(new Event('change',{bubbles:true,composed:true}));
+    return true;
+  }
+  document.addEventListener('paste', async function(e){
+    var active=document.activeElement;
+    if(!inComposer(e.target) && !inComposer(active)) return;
+    var files=await clipboardImages(e);
+    if(!files.length) return;
+    if(attach(files)){
+      e.preventDefault(); e.stopImmediatePropagation();
+      setTimeout(function(){ try{ if(window.pfFitChat) window.pfFitChat(); }catch(_){} },100);
+    }
+  },true);
+  window.pfPasteReady=true;
 })();
 """
 
@@ -3550,7 +3558,7 @@ with gr.Blocks(title=TITLE, **blocks_kwargs) as demo:
                 'Tap 🎤 in the composer to speak, or toggle spoken replies below.</div>')
         gr.HTML(f'<div class="pf-settings-group-title">About</div>'
                 f'<div style="font-size:.78rem;color:var(--pf-text2);line-height:1.6">'
-                f'Purple Falcon AI v6.0.2<br>Code execution: {"On" if RUN_CODE_ENABLED else "Off"}<br>'
+                f'Purple Falcon AI v6.0.3<br>Code execution: {"On" if RUN_CODE_ENABLED else "Off"}<br>'
                 f'Chat AI: {"Connected" if AI_CONFIGURED else "Not configured"}</div>')
 
     pending_file = gr.State(None)
