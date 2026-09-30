@@ -2,7 +2,7 @@
 
 
 # ==================================================
-# 💜 PURPLE FALCON PH v6.0.3 — LIVE SKILLS + SELF-LEARNING + FILE ANALYST + NEWS + LOGO + IMAGE/VIDEO 🇵🇭
+# 💜 PURPLE FALCON PH v6.0.4 — LIVE SKILLS + SELF-LEARNING + FILE ANALYST + NEWS + LOGO + IMAGE/VIDEO 🇵🇭
 # ==================================================
 #   ✅ Live skills that learn: weather, exchange rates, world clock, Wikipedia, web search, web pages, earthquakes, dictionary,
 #      country facts, calculator — used whenever the AI model can't answer or is unreachable (falcon_skills.py)
@@ -140,7 +140,7 @@ CODE_ANALYSIS_OVERLAP_CHARS = 1200
 DEFAULT_MAX_TOKENS = 2000
 CODE_MAX_TOKENS = 8000           # no artificial line/length ceiling on generated code — let the model finish it
 GROQ_VISION_MODEL = os.getenv("GROQ_VISION_MODEL", "llama-3.2-11b-vision-preview")
-OPENROUTER_VISION_MODEL = os.getenv("OPENROUTER_VISION_MODEL", "google/gemini-3.8-flash-image")
+OPENROUTER_VISION_MODEL = os.getenv("OPENROUTER_VISION_MODEL", "google/gemini-3-flash-preview")
 RUN_CODE_TIMEOUT = int(os.getenv("PF_RUN_TIMEOUT", "15"))
 RUN_CODE_ENABLED = os.getenv("PF_RUN_CODE", "1").strip().lower() not in ("0", "false", "no", "off")
 
@@ -269,7 +269,7 @@ except ImportError:
     websearch, WEB_STATUS = None, "⚠️ falcon_websearch.py not found next to this script"
 
 print("=" * 60)
-print("💜 PURPLE FALCON PH v6.0.3 — PROTECTED 🇵🇭")
+print("💜 PURPLE FALCON PH v6.0.4 — PROTECTED 🇵🇭")
 if ENV_PATH:
     print(f"   .env file:     {'✅' if not ENV_PROBLEMS else '⚠️'} {ENV_LOADED} setting(s) read")
     for _p in ENV_PROBLEMS: print(f"                  ↳ {_p}")
@@ -361,7 +361,7 @@ def build_status_bar_html():
              ("Database", "Not Connected", False)]
     parts = "".join(f'<div class="pf-status-item{" ok" if ok else ""}"><span class="dot"></span><span>{name}: {state}</span></div>'
                     for name, state, ok in items)
-    return parts + '<div class="pf-status-item"><span>Purple Falcon AI v6.0.3</span></div>'
+    return parts + '<div class="pf-status-item"><span>Purple Falcon AI v6.0.4</span></div>'
 
 def build_sidebar_nav_html():
     soon = lambda icon, label: (f'<div class="pf-nav-item disabled"><span>{icon}</span>'
@@ -1061,68 +1061,17 @@ document.addEventListener('DOMContentLoaded', function(){
 # ---------- paste an image straight into the message box ----------
 _PASTE_JS = r"""
 (function(){
-  function uploadInputs(){
-    return Array.from(document.querySelectorAll('#pf-plus input[type="file"], input[type="file"]')).filter(function(x){ return x && !x.disabled; });
-  }
-  function findUploadInput(){
-    var scoped=document.querySelector('#pf-plus input[type="file"]');
-    if(scoped) return scoped;
-    var all=uploadInputs();
-    return all.length ? all[0] : null;
-  }
-  function inComposer(target){
-    return !!(target && target.closest && target.closest('#pf-composer-area, #pf-msg'));
-  }
-  async function clipboardImages(e){
-    var out=[];
-    var cd=e.clipboardData || window.clipboardData;
-    if(cd && cd.items){
-      for(var i=0;i<cd.items.length;i++){
-        var item=cd.items[i];
-        if(item.kind==='file' && String(item.type||'').toLowerCase().startsWith('image/')){
-          var f=item.getAsFile(); if(f) out.push(f);
-        }
-      }
-    }
-    if(!out.length && cd && cd.files){
-      for(var j=0;j<cd.files.length;j++) if(String(cd.files[j].type||'').toLowerCase().startsWith('image/')) out.push(cd.files[j]);
-    }
-    return out;
-  }
-  function extFor(mime){
-    mime=String(mime||'image/png').toLowerCase();
-    if(mime.includes('png')) return 'png';
-    if(mime.includes('webp')) return 'webp';
-    if(mime.includes('gif')) return 'gif';
-    if(mime.includes('bmp')) return 'bmp';
-    return 'jpg';
-  }
-  function attach(files){
-    var input=findUploadInput();
-    if(!input){ console.error('Purple Falcon Ctrl+V: file input not found'); return false; }
-    var dt=new DataTransfer();
-    if(input.files) for(var i=0;i<input.files.length;i++) dt.items.add(input.files[i]);
-    files.forEach(function(f,idx){
-      var mime=f.type || 'image/png';
-      var name=(f.name && f.name.includes('.')) ? f.name : ('screenshot-'+Date.now()+'-'+(idx+1)+'.'+extFor(mime));
-      try{ dt.items.add(new File([f],name,{type:mime,lastModified:Date.now()})); }catch(err){ dt.items.add(f); }
-    });
-    try{ input.files=dt.files; }catch(err){ console.error('Purple Falcon Ctrl+V: DataTransfer assignment failed',err); return false; }
-    input.dispatchEvent(new Event('input',{bubbles:true,composed:true}));
-    input.dispatchEvent(new Event('change',{bubbles:true,composed:true}));
-    return true;
-  }
-  document.addEventListener('paste', async function(e){
-    var active=document.activeElement;
-    if(!inComposer(e.target) && !inComposer(active)) return;
-    var files=await clipboardImages(e);
-    if(!files.length) return;
-    if(attach(files)){
-      e.preventDefault(); e.stopImmediatePropagation();
-      setTimeout(function(){ try{ if(window.pfFitChat) window.pfFitChat(); }catch(_){} },100);
-    }
-  },true);
-  window.pfPasteReady=true;
+ function inComposer(t){return !!(t&&t.closest&&t.closest('#pf-composer-area, #pf-msg'));}
+ function uploadInput(){return document.querySelector('#pf-plus input[type="file"]')||Array.from(document.querySelectorAll('input[type="file"]')).find(function(x){return !x.disabled;});}
+ document.addEventListener('paste',function(e){
+  if(!inComposer(e.target)&&!inComposer(document.activeElement)) return;
+  var cd=e.clipboardData||window.clipboardData;if(!cd)return;var files=[];
+  if(cd.items) for(var i=0;i<cd.items.length;i++){var it=cd.items[i];if(it.kind==='file'&&String(it.type||'').toLowerCase().startsWith('image/')){var f=it.getAsFile();if(f)files.push(f);}}
+  if(!files.length&&cd.files) for(var j=0;j<cd.files.length;j++)if(String(cd.files[j].type||'').toLowerCase().startsWith('image/'))files.push(cd.files[j]);
+  if(!files.length)return;var el=uploadInput();if(!el){console.error('Purple Falcon Ctrl+V: upload input not found');return;}var dt=new DataTransfer();
+  if(el.files)for(var k=0;k<el.files.length;k++)dt.items.add(el.files[k]);files.forEach(function(f){dt.items.add(f);});el.files=dt.files;
+  el.dispatchEvent(new Event('input',{bubbles:true,composed:true}));el.dispatchEvent(new Event('change',{bubbles:true,composed:true}));e.preventDefault();e.stopImmediatePropagation();
+ },true);window.pfPasteReady=true;
 })();
 """
 
@@ -2084,9 +2033,13 @@ def call_ai_vision(message, image_paths, history_messages, temperature=0.7, max_
             print(f"⚠️ {name}: timed out after {timeout}s")
         except Exception as e:
             print(f"⚠️ {name} failed: {e}")
-    print("⚠️ (kept out of chat) vision — no vision-capable provider answered "
-          "(check GROQ_API_KEY/OPENROUTER_API_KEY and the *_VISION_MODEL settings)")
-    return natural_fallback("vision")
+    configured=[]
+    if GROQ_API_KEY and GROQ_VISION_MODEL: configured.append("Groq vision")
+    if OPENROUTER_API_KEY and OPENROUTER_VISION_MODEL: configured.append("OpenRouter vision")
+    print(f"⚠️ Vision unavailable — configured={configured or ['none']}")
+    if not configured:
+        return "👁️ Nakuha ko ang image attachment, pero walang configured vision-capable provider. Add a supported vision model/API, then resend the image."
+    return "👁️ Nakuha ko ang image attachment, pero hindi nakapag-return ng valid analysis ang configured vision provider. Hindi problema ang Ctrl+V upload; vision-provider/model routing ang kailangang i-check."
 
 # ==================================================
 # 🖥️ RUN CODE — executes a code block from the chat locally (Python / Bash / Node.js)
@@ -3558,7 +3511,7 @@ with gr.Blocks(title=TITLE, **blocks_kwargs) as demo:
                 'Tap 🎤 in the composer to speak, or toggle spoken replies below.</div>')
         gr.HTML(f'<div class="pf-settings-group-title">About</div>'
                 f'<div style="font-size:.78rem;color:var(--pf-text2);line-height:1.6">'
-                f'Purple Falcon AI v6.0.3<br>Code execution: {"On" if RUN_CODE_ENABLED else "Off"}<br>'
+                f'Purple Falcon AI v6.0.4<br>Code execution: {"On" if RUN_CODE_ENABLED else "Off"}<br>'
                 f'Chat AI: {"Connected" if AI_CONFIGURED else "Not configured"}</div>')
 
     pending_file = gr.State(None)
