@@ -2,7 +2,7 @@
 
 
 # ==================================================
-# 💜 PURPLE FALCON PH v6.0.6 — LIVE SKILLS + SELF-LEARNING + FILE ANALYST + NEWS + LOGO + IMAGE/VIDEO 🇵🇭
+# 💜 PURPLE FALCON PH v6.1 — LIVE SKILLS + SELF-LEARNING + FILE ANALYST + NEWS + LOGO + IMAGE/VIDEO 🇵🇭
 # ==================================================
 #   ✅ Live skills that learn: weather, exchange rates, world clock, Wikipedia, web search, web pages, earthquakes, dictionary,
 #      country facts, calculator — used whenever the AI model can't answer or is unreachable (falcon_skills.py)
@@ -128,6 +128,12 @@ AI_CONFIGURED = bool(GROQ_API_KEY) or bool(OPENROUTER_API_KEY)
 POLLINATIONS_TEXT_MODEL = os.getenv("POLLINATIONS_TEXT_MODEL", "openai")   # chat model served by gen.pollinations.ai
 PEEPAK_MODEL = os.getenv("PEEPAK_MODEL", "peepak:latest")
 PEEPAK_ENDPOINT = os.getenv("PEEPAK_ENDPOINT", "http://127.0.0.1:11434/api/chat")
+LOCAL_FALCON_URL = os.getenv("PF_LOCAL_FALCON_URL", "").strip()
+LOCAL_FALCON_MODEL = os.getenv("PF_LOCAL_FALCON_MODEL", "tiiuae/Falcon-H1R-7B").strip()
+LOCAL_FALCON_API_KEY = os.getenv("PF_LOCAL_FALCON_API_KEY", "").strip()
+LOCAL_FALCON_ENABLED = bool(LOCAL_FALCON_URL) and os.getenv("PF_LOCAL_FALCON", "1").strip().lower() not in ("0","false","no","off")
+FALCON_PERCEPTION_URL = os.getenv("PF_FALCON_PERCEPTION_URL", "").strip()
+FALCON_PERCEPTION_ENABLED = bool(FALCON_PERCEPTION_URL) and os.getenv("PF_FALCON_PERCEPTION", "1").strip().lower() not in ("0","false","no","off")
 PEEPAK_ENABLED = os.getenv("PEEPAK_ENABLED", "0").strip().lower() not in ("0", "false", "no", "off")
 HF_CHAT_MODEL = os.getenv("HF_CHAT_MODEL", "Qwen/Qwen2.5-7B-Instruct")
 HF_CHAT_ENDPOINT = os.getenv("HF_CHAT_ENDPOINT", "https://router.huggingface.co/v1/chat/completions")
@@ -141,8 +147,6 @@ DEFAULT_MAX_TOKENS = 2000
 CODE_MAX_TOKENS = 8000           # no artificial line/length ceiling on generated code — let the model finish it
 GROQ_VISION_MODEL = os.getenv("GROQ_VISION_MODEL", "qwen/qwen3.8-27b")
 OPENROUTER_VISION_MODEL = os.getenv("OPENROUTER_VISION_MODEL", "google/gemini-3-flash-preview")
-OPENROUTER_VISION_FALLBACK_MODELS = [m.strip() for m in os.getenv("OPENROUTER_VISION_FALLBACK_MODELS", "").split(",") if m.strip()]
-VISION_FALLBACK_REASONING = os.getenv("PF_VISION_FALLBACK_REASONING", "1").strip().lower() not in ("0","false","no","off")
 RUN_CODE_TIMEOUT = int(os.getenv("PF_RUN_TIMEOUT", "15"))
 RUN_CODE_ENABLED = os.getenv("PF_RUN_CODE", "1").strip().lower() not in ("0", "false", "no", "off")
 
@@ -271,7 +275,7 @@ except ImportError:
     websearch, WEB_STATUS = None, "⚠️ falcon_websearch.py not found next to this script"
 
 print("=" * 60)
-print("💜 PURPLE FALCON PH v6.0.6 — PROTECTED 🇵🇭")
+print("💜 PURPLE FALCON PH v6.1 — PROTECTED 🇵🇭")
 if ENV_PATH:
     print(f"   .env file:     {'✅' if not ENV_PROBLEMS else '⚠️'} {ENV_LOADED} setting(s) read")
     for _p in ENV_PROBLEMS: print(f"                  ↳ {_p}")
@@ -363,7 +367,7 @@ def build_status_bar_html():
              ("Database", "Not Connected", False)]
     parts = "".join(f'<div class="pf-status-item{" ok" if ok else ""}"><span class="dot"></span><span>{name}: {state}</span></div>'
                     for name, state, ok in items)
-    return parts + '<div class="pf-status-item"><span>Purple Falcon AI v6.0.6</span></div>'
+    return parts + '<div class="pf-status-item"><span>Purple Falcon AI v6.1</span></div>'
 
 def build_sidebar_nav_html():
     soon = lambda icon, label: (f'<div class="pf-nav-item disabled"><span>{icon}</span>'
@@ -1062,19 +1066,7 @@ document.addEventListener('DOMContentLoaded', function(){
 
 # ---------- paste an image straight into the message box ----------
 _PASTE_JS = r"""
-(function(){
- function inComposer(t){return !!(t&&t.closest&&t.closest('#pf-composer-area, #pf-msg'));}
- function uploadInput(){return document.querySelector('#pf-plus input[type="file"]')||Array.from(document.querySelectorAll('input[type="file"]')).find(function(x){return !x.disabled;});}
- document.addEventListener('paste',function(e){
-  if(!inComposer(e.target)&&!inComposer(document.activeElement)) return;
-  var cd=e.clipboardData||window.clipboardData;if(!cd)return;var files=[];
-  if(cd.items) for(var i=0;i<cd.items.length;i++){var it=cd.items[i];if(it.kind==='file'&&String(it.type||'').toLowerCase().startsWith('image/')){var f=it.getAsFile();if(f)files.push(f);}}
-  if(!files.length&&cd.files) for(var j=0;j<cd.files.length;j++)if(String(cd.files[j].type||'').toLowerCase().startsWith('image/'))files.push(cd.files[j]);
-  if(!files.length)return;var el=uploadInput();if(!el){console.error('Purple Falcon Ctrl+V: upload input not found');return;}var dt=new DataTransfer();
-  if(el.files)for(var k=0;k<el.files.length;k++)dt.items.add(el.files[k]);files.forEach(function(f){dt.items.add(f);});el.files=dt.files;
-  el.dispatchEvent(new Event('input',{bubbles:true,composed:true}));el.dispatchEvent(new Event('change',{bubbles:true,composed:true}));e.preventDefault();e.stopImmediatePropagation();
- },true);window.pfPasteReady=true;
-})();
+(function(){function inC(t){return !!(t&&t.closest&&t.closest('#pf-composer-area,#pf-msg'));}function up(){return document.querySelector('#pf-plus input[type="file"]')||Array.from(document.querySelectorAll('input[type="file"]')).find(x=>!x.disabled);}document.addEventListener('paste',function(e){if(!inC(e.target)&&!inC(document.activeElement))return;var c=e.clipboardData||window.clipboardData;if(!c)return;var fs=[];if(c.items)for(var i=0;i<c.items.length;i++){var x=c.items[i];if(x.kind==='file'&&String(x.type||'').toLowerCase().startsWith('image/')){var f=x.getAsFile();if(f)fs.push(f);}}if(!fs.length&&c.files)for(var j=0;j<c.files.length;j++)if(String(c.files[j].type||'').toLowerCase().startsWith('image/'))fs.push(c.files[j]);if(!fs.length)return;var el=up();if(!el)return;var d=new DataTransfer();if(el.files)for(var k=0;k<el.files.length;k++)d.items.add(el.files[k]);fs.forEach(f=>d.items.add(f));el.files=d.files;el.dispatchEvent(new Event('input',{bubbles:true,composed:true}));el.dispatchEvent(new Event('change',{bubbles:true,composed:true}));e.preventDefault();e.stopImmediatePropagation();},true);window.pfPasteReady=true;})();
 """
 
 # ---------- app shell: sidebar collapse/mobile drawer, settings drawer, response actions ----------
@@ -1878,6 +1870,10 @@ def call_ai(messages, temperature=0.8, max_tokens=None):
         providers.append(("OpenRouter", "https://openrouter.ai/api/v1/chat/completions",
                          {"Authorization": f"Bearer {OPENROUTER_API_KEY}",
                           "HTTP-Referer": "http://127.0.0.1:7860", "X-Title": "Purple Falcon PH"}, OPENROUTER_MODEL, 30))
+    if LOCAL_FALCON_ENABLED:
+        local_headers={"Content-Type":"application/json"}
+        if LOCAL_FALCON_API_KEY: local_headers["Authorization"] = f"Bearer {LOCAL_FALCON_API_KEY}"
+        providers.append(("Local Falcon H1R", LOCAL_FALCON_URL, local_headers, LOCAL_FALCON_MODEL, 180))
     if HF_API_KEY:
         providers.append(("Hugging Face", HF_CHAT_ENDPOINT,
                           {"Authorization": f"Bearer {HF_API_KEY}"}, HF_CHAT_MODEL, 45))
@@ -1917,21 +1913,16 @@ def call_ai(messages, temperature=0.8, max_tokens=None):
                         print(f"⚠️ {name}: provider returned a billing/quota notice as content; response suppressed, trying next provider")
                         continue
                     return text.strip()
-                vision_failures.append(f"{name}: empty reply")
                 print(f"⚠️ {name}: empty reply")
             elif r.status_code in (401, 402, 403):
-                vision_failures.append(f"{name}: HTTP {r.status_code} authentication/credit failure")
                 print(f"⚠️ {name}: key rejected or out of credits (HTTP {r.status_code})")
             elif r.status_code == 429:
-                vision_failures.append(f"{name}: HTTP 429 rate limited")
                 print(f"⚠️ {name}: rate-limited (HTTP 429)")
             else:
                 print(f"⚠️ {name}: HTTP {r.status_code}")
         except requests.Timeout:
-            vision_failures.append(f"{name}: timeout")
             print(f"⚠️ {name}: timed out after {timeout}s")
         except Exception as e:
-            vision_failures.append(f"{name}: {e.__class__.__name__}")
             print(f"⚠️ {name} failed: {e}")
     if PEEPAK_ENABLED:
         text, error = call_ollama(messages, temperature, max_tokens)
@@ -1995,35 +1986,46 @@ def build_universal_vision_question(message):
         user = "Analyze this image and give useful feedback."
     return UNIVERSAL_VISION_PROMPT + "\nUSER REQUEST:\n" + user
 
-def falcon_vision_prompt(message):
+def falcon_eyes_prompt(message):
     user=(message or "").strip() or "Check this image."
-    return f"""You are Purple Falcon Eyes, the visual perception layer of Purple Falcon.
-Analyze only what the image visibly supports. Do not guess hidden facts.
-Return a useful observation for the Falcon reasoning brain using:
-- What Purple Falcon sees
-- Visible text, if relevant
-- Important objects/conditions
-- What appears OK / needs attention, only if an explicit standard or visible defect supports it
-- Unknowns that cannot be verified from the image
-- Direct answer to the user's request
+    return f"""You are Purple Falcon Eyes. Inspect only what the image visibly supports.
+Return concise visual evidence: scene, important objects, visible text, relevant conditions, unknowns, and a direct answer to the user's request.
+Do not invent identity, intent, emotion, hidden state, or facts not visible in the image.
 USER REQUEST: {user}"""
 
-def falcon_reason_over_vision(user_message, visual_observation, history_messages):
-    """Send verified visual observations to every working general brain chain for contextual reasoning."""
-    if not visual_observation or not visual_observation.strip(): return visual_observation
-    reasoning_prompt=("PURPLE FALCON EYES produced the following visual observation. Treat it as the visual evidence for this turn. "
-                      "Reason over it together with the user's request and recent conversation. Do not claim visual details that are absent from the observation. "
-                      "Answer naturally as Purple Falcon; do not mention provider routing unless a provider failure prevents the task.\n\n"
-                      f"USER REQUEST:\n{user_message}\n\nVISUAL EVIDENCE:\n{visual_observation}")
+def falcon_reason_over_vision(user_message, visual_evidence, history_messages):
+    """Use the normal all-working-brains chain to reason over actual visual evidence."""
+    if not visual_evidence: return visual_evidence
+    prompt=("Purple Falcon Eyes returned verified visual evidence below. Use it with recent conversation to answer naturally as Purple Falcon. "
+            "Do not add visual claims that are absent from the evidence.\n\n"
+            f"USER REQUEST:\n{user_message}\n\nVISUAL EVIDENCE:\n{visual_evidence}")
     msgs=list(history_messages or [])
-    if not msgs or msgs[0].get('role')!='system': msgs=[{'role':'system','content':get_system_prompt()}]+msgs
-    msgs.append({'role':'user','content':reasoning_prompt})
-    reasoned=call_ai(msgs, temperature=0.55, max_tokens=1800)
-    return visual_observation if ai_failed(reasoned) else reasoned.strip()
+    if not msgs or msgs[0].get("role") != "system": msgs=[{"role":"system","content":get_system_prompt()}]+msgs
+    msgs.append({"role":"user","content":prompt})
+    result=call_ai(msgs,temperature=0.55,max_tokens=1800)
+    return visual_evidence if ai_failed(result) else result.strip()
+
+def call_falcon_perception(image_paths, message):
+    """Optional HTTP adapter. Expected service contract: POST JSON {images:[data URLs], query:str} -> {text|result:str}."""
+    if not FALCON_PERCEPTION_ENABLED: return ""
+    payload_images=[encode_image_data_url(p) for p in image_paths[:3]]
+    payload_images=[x for x in payload_images if x]
+    if not payload_images: return ""
+    try:
+        r=requests.post(FALCON_PERCEPTION_URL,json={"images":payload_images,"query":message or "Describe important visible objects and text."},timeout=90)
+        if r.status_code != 200:
+            print(f"⚠️ Falcon Perception HTTP {r.status_code}: {r.text[:180]}")
+            return ""
+        data=r.json() if "json" in (r.headers.get("content-type") or "") else {"text":r.text}
+        text=data.get("text") or data.get("result") or data.get("output") or ""
+        return str(text).strip()
+    except Exception as e:
+        print(f"⚠️ Falcon Perception failed: {e}")
+        return ""
 
 def call_ai_vision(message, image_paths, history_messages, temperature=0.7, max_tokens=1500):
     """Sends up to 4 images + text to a vision-capable model. Tries Groq, then OpenRouter."""
-    content = [{"type": "text", "text": falcon_vision_prompt(message)}]
+    content = [{"type": "text", "text": falcon_eyes_prompt(message)}]
     used = 0
     for p in image_paths[:4]:
         url = encode_image_data_url(p)
@@ -2035,19 +2037,14 @@ def call_ai_vision(message, image_paths, history_messages, temperature=0.7, max_
 
     msgs = history_messages + [{"role": "user", "content": content}]
     providers = []
-    if GROQ_API_KEY and GROQ_VISION_MODEL:
+    if GROQ_API_KEY:
         providers.append(("Groq Vision", "https://api.groq.com/openai/v1/chat/completions",
                           {"Authorization": f"Bearer {GROQ_API_KEY}"}, GROQ_VISION_MODEL, 45))
     if OPENROUTER_API_KEY:
-        openrouter_models=[]
-        for model_id in [OPENROUTER_VISION_MODEL] + OPENROUTER_VISION_FALLBACK_MODELS:
-            if model_id and model_id not in openrouter_models: openrouter_models.append(model_id)
-        for model_id in openrouter_models:
-            providers.append((f"OpenRouter Vision [{model_id}]", "https://openrouter.ai/api/v1/chat/completions",
-                              {"Authorization": f"Bearer {OPENROUTER_API_KEY}",
-                               "HTTP-Referer": "http://127.0.0.1:7860", "X-Title": "Purple Falcon PH"},
-                              model_id, 45))
-    vision_failures=[]
+        providers.append(("OpenRouter Vision", "https://openrouter.ai/api/v1/chat/completions",
+                          {"Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                           "HTTP-Referer": "http://127.0.0.1:7860", "X-Title": "Purple Falcon PH"},
+                          OPENROUTER_VISION_MODEL, 45))
     for name, url_, headers, model, timeout in providers:
         try:
             r = requests.post(url_, headers=headers, timeout=timeout,
@@ -2059,29 +2056,25 @@ def call_ai_vision(message, image_paths, history_messages, temperature=0.7, max_
                 if isinstance(text, list):  # some providers return content blocks instead of a plain string
                     text = "".join(b.get("text", "") for b in text if isinstance(b, dict))
                 if text and text.strip():
-                    visual=text.strip()
-                    return falcon_reason_over_vision(message, visual, history_messages)
+                    return falcon_reason_over_vision(message, text.strip(), history_messages)
                 print(f"⚠️ {name}: empty reply")
             elif r.status_code in (401, 402, 403):
                 print(f"⚠️ {name}: key rejected or out of credits (HTTP {r.status_code})")
             elif r.status_code == 429:
                 print(f"⚠️ {name}: rate-limited (HTTP 429)")
             else:
-                vision_failures.append(f"{name}: HTTP {r.status_code}")
                 print(f"⚠️ {name}: HTTP {r.status_code} — {r.text[:200]}")
         except requests.Timeout:
             print(f"⚠️ {name}: timed out after {timeout}s")
         except Exception as e:
             print(f"⚠️ {name} failed: {e}")
-    configured=[name for name, *_ in providers]
-    print(f"⚠️ Vision unavailable — configured={configured or ['none']} failures={vision_failures[-4:]}")
-    # Purple Falcon response stays natural; technical provider details remain in Render logs.
-    if not configured:
-        return ("👁️ **Purple Falcon Eyes is temporarily unavailable.** I received the image correctly, but none of my visual brains are online right now. "
-                "I’ll keep the conversation context, and I won’t invent details I cannot actually see. Once a visual brain is available, send or paste the image again and I’ll inspect it directly.")
-    return ("👁️ **Purple Falcon Eyes received the image, but my visual brains did not complete the inspection.** "
-            "The attachment itself is OK. I’m keeping the current conversation context and I won’t guess about the image. "
-            "Please retry the same image after the visual route recovers; my other reasoning brains remain available for non-visual parts of the task.")
+    perception=call_falcon_perception(image_paths,message)
+    if perception:
+        return falcon_reason_over_vision(message, perception, history_messages)
+    print("⚠️ Vision router: no visual brain returned usable evidence")
+    return ("👁️ **Purple Falcon Eyes received the image, but the inspection did not complete.** "
+            "The attachment is intact and the conversation context is still with me. I tried the available visual brains and I won't guess about details I couldn't verify. "
+            "My reasoning, coding, math, memory, and web capabilities remain available while the visual route recovers.")
 
 # ==================================================
 # 🖥️ RUN CODE — executes a code block from the chat locally (Python / Bash / Node.js)
@@ -3553,7 +3546,7 @@ with gr.Blocks(title=TITLE, **blocks_kwargs) as demo:
                 'Tap 🎤 in the composer to speak, or toggle spoken replies below.</div>')
         gr.HTML(f'<div class="pf-settings-group-title">About</div>'
                 f'<div style="font-size:.78rem;color:var(--pf-text2);line-height:1.6">'
-                f'Purple Falcon AI v6.0.6<br>Code execution: {"On" if RUN_CODE_ENABLED else "Off"}<br>'
+                f'Purple Falcon AI v6.1<br>Code execution: {"On" if RUN_CODE_ENABLED else "Off"}<br>'
                 f'Chat AI: {"Connected" if AI_CONFIGURED else "Not configured"}</div>')
 
     pending_file = gr.State(None)
