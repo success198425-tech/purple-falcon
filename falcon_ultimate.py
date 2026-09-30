@@ -2,7 +2,7 @@
 
 
 # ==================================================
-# 💜 PURPLE FALCON PH v6.0.4 — LIVE SKILLS + SELF-LEARNING + FILE ANALYST + NEWS + LOGO + IMAGE/VIDEO 🇵🇭
+# 💜 PURPLE FALCON PH v6.0.5 — LIVE SKILLS + SELF-LEARNING + FILE ANALYST + NEWS + LOGO + IMAGE/VIDEO 🇵🇭
 # ==================================================
 #   ✅ Live skills that learn: weather, exchange rates, world clock, Wikipedia, web search, web pages, earthquakes, dictionary,
 #      country facts, calculator — used whenever the AI model can't answer or is unreachable (falcon_skills.py)
@@ -141,6 +141,8 @@ DEFAULT_MAX_TOKENS = 2000
 CODE_MAX_TOKENS = 8000           # no artificial line/length ceiling on generated code — let the model finish it
 GROQ_VISION_MODEL = os.getenv("GROQ_VISION_MODEL", "llama-3.2-11b-vision-preview")
 OPENROUTER_VISION_MODEL = os.getenv("OPENROUTER_VISION_MODEL", "google/gemini-3-flash-preview")
+OPENROUTER_VISION_FALLBACK_MODELS = [m.strip() for m in os.getenv("OPENROUTER_VISION_FALLBACK_MODELS", "").split(",") if m.strip()]
+VISION_FALLBACK_REASONING = os.getenv("PF_VISION_FALLBACK_REASONING", "1").strip().lower() not in ("0","false","no","off")
 RUN_CODE_TIMEOUT = int(os.getenv("PF_RUN_TIMEOUT", "15"))
 RUN_CODE_ENABLED = os.getenv("PF_RUN_CODE", "1").strip().lower() not in ("0", "false", "no", "off")
 
@@ -269,7 +271,7 @@ except ImportError:
     websearch, WEB_STATUS = None, "⚠️ falcon_websearch.py not found next to this script"
 
 print("=" * 60)
-print("💜 PURPLE FALCON PH v6.0.4 — PROTECTED 🇵🇭")
+print("💜 PURPLE FALCON PH v6.0.5 — PROTECTED 🇵🇭")
 if ENV_PATH:
     print(f"   .env file:     {'✅' if not ENV_PROBLEMS else '⚠️'} {ENV_LOADED} setting(s) read")
     for _p in ENV_PROBLEMS: print(f"                  ↳ {_p}")
@@ -361,7 +363,7 @@ def build_status_bar_html():
              ("Database", "Not Connected", False)]
     parts = "".join(f'<div class="pf-status-item{" ok" if ok else ""}"><span class="dot"></span><span>{name}: {state}</span></div>'
                     for name, state, ok in items)
-    return parts + '<div class="pf-status-item"><span>Purple Falcon AI v6.0.4</span></div>'
+    return parts + '<div class="pf-status-item"><span>Purple Falcon AI v6.0.5</span></div>'
 
 def build_sidebar_nav_html():
     soon = lambda icon, label: (f'<div class="pf-nav-item disabled"><span>{icon}</span>'
@@ -1915,16 +1917,21 @@ def call_ai(messages, temperature=0.8, max_tokens=None):
                         print(f"⚠️ {name}: provider returned a billing/quota notice as content; response suppressed, trying next provider")
                         continue
                     return text.strip()
+                vision_failures.append(f"{name}: empty reply")
                 print(f"⚠️ {name}: empty reply")
             elif r.status_code in (401, 402, 403):
+                vision_failures.append(f"{name}: HTTP {r.status_code} authentication/credit failure")
                 print(f"⚠️ {name}: key rejected or out of credits (HTTP {r.status_code})")
             elif r.status_code == 429:
+                vision_failures.append(f"{name}: HTTP 429 rate limited")
                 print(f"⚠️ {name}: rate-limited (HTTP 429)")
             else:
                 print(f"⚠️ {name}: HTTP {r.status_code}")
         except requests.Timeout:
+            vision_failures.append(f"{name}: timeout")
             print(f"⚠️ {name}: timed out after {timeout}s")
         except Exception as e:
+            vision_failures.append(f"{name}: {e.__class__.__name__}")
             print(f"⚠️ {name} failed: {e}")
     if PEEPAK_ENABLED:
         text, error = call_ollama(messages, temperature, max_tokens)
@@ -2002,14 +2009,19 @@ def call_ai_vision(message, image_paths, history_messages, temperature=0.7, max_
 
     msgs = history_messages + [{"role": "user", "content": content}]
     providers = []
-    if GROQ_API_KEY:
+    if GROQ_API_KEY and GROQ_VISION_MODEL:
         providers.append(("Groq Vision", "https://api.groq.com/openai/v1/chat/completions",
                           {"Authorization": f"Bearer {GROQ_API_KEY}"}, GROQ_VISION_MODEL, 45))
     if OPENROUTER_API_KEY:
-        providers.append(("OpenRouter Vision", "https://openrouter.ai/api/v1/chat/completions",
-                          {"Authorization": f"Bearer {OPENROUTER_API_KEY}",
-                           "HTTP-Referer": "http://127.0.0.1:7860", "X-Title": "Purple Falcon PH"},
-                          OPENROUTER_VISION_MODEL, 45))
+        openrouter_models=[]
+        for model_id in [OPENROUTER_VISION_MODEL] + OPENROUTER_VISION_FALLBACK_MODELS:
+            if model_id and model_id not in openrouter_models: openrouter_models.append(model_id)
+        for model_id in openrouter_models:
+            providers.append((f"OpenRouter Vision [{model_id}]", "https://openrouter.ai/api/v1/chat/completions",
+                              {"Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                               "HTTP-Referer": "http://127.0.0.1:7860", "X-Title": "Purple Falcon PH"},
+                              model_id, 45))
+    vision_failures=[]
     for name, url_, headers, model, timeout in providers:
         try:
             r = requests.post(url_, headers=headers, timeout=timeout,
@@ -2028,18 +2040,24 @@ def call_ai_vision(message, image_paths, history_messages, temperature=0.7, max_
             elif r.status_code == 429:
                 print(f"⚠️ {name}: rate-limited (HTTP 429)")
             else:
+                vision_failures.append(f"{name}: HTTP {r.status_code}")
                 print(f"⚠️ {name}: HTTP {r.status_code} — {r.text[:200]}")
         except requests.Timeout:
             print(f"⚠️ {name}: timed out after {timeout}s")
         except Exception as e:
             print(f"⚠️ {name} failed: {e}")
-    configured=[]
-    if GROQ_API_KEY and GROQ_VISION_MODEL: configured.append("Groq vision")
-    if OPENROUTER_API_KEY and OPENROUTER_VISION_MODEL: configured.append("OpenRouter vision")
-    print(f"⚠️ Vision unavailable — configured={configured or ['none']}")
+    configured=[name for name, *_ in providers]
+    print(f"⚠️ Vision unavailable — configured={configured or ['none']} failures={vision_failures[-4:]}")
     if not configured:
-        return "👁️ Nakuha ko ang image attachment, pero walang configured vision-capable provider. Add a supported vision model/API, then resend the image."
-    return "👁️ Nakuha ko ang image attachment, pero hindi nakapag-return ng valid analysis ang configured vision provider. Hindi problema ang Ctrl+V upload; vision-provider/model routing ang kailangang i-check."
+        return "👁️ Nakuha ko ang image attachment, pero walang configured vision-capable provider. Hindi ako huhula sa laman ng image. Kailangan ng vision provider para sa visual analysis."
+    if VISION_FALLBACK_REASONING:
+        # Fallback reasoning is about recovery/next action only. A text-only model cannot truthfully infer unseen pixels.
+        failure_summary = ", ".join(vision_failures[-3:]) or "all configured vision routes returned no usable analysis"
+        return ("👁️ **Vision fallback reasoning activated.** Nakuha at na-validate ko ang image attachment, pero walang vision model na nakapagbigay ng usable visual result. "
+                f"**Recovery assessment:** {failure_summary}. Sinubukan ko ang configured vision routes in order. "
+                "Hindi ako gagawa ng pekeng image description gamit lang ang text fallback, dahil wala itong access sa image pixels. "
+                "Next action: verify the vision model/API availability or configure another multimodal fallback model, then I can retry the same attached image.")
+    return "👁️ Image received, but every configured vision route failed. I kept the attachment context and did not invent a visual answer."
 
 # ==================================================
 # 🖥️ RUN CODE — executes a code block from the chat locally (Python / Bash / Node.js)
@@ -3511,7 +3529,7 @@ with gr.Blocks(title=TITLE, **blocks_kwargs) as demo:
                 'Tap 🎤 in the composer to speak, or toggle spoken replies below.</div>')
         gr.HTML(f'<div class="pf-settings-group-title">About</div>'
                 f'<div style="font-size:.78rem;color:var(--pf-text2);line-height:1.6">'
-                f'Purple Falcon AI v6.0.4<br>Code execution: {"On" if RUN_CODE_ENABLED else "Off"}<br>'
+                f'Purple Falcon AI v6.0.5<br>Code execution: {"On" if RUN_CODE_ENABLED else "Off"}<br>'
                 f'Chat AI: {"Connected" if AI_CONFIGURED else "Not configured"}</div>')
 
     pending_file = gr.State(None)
