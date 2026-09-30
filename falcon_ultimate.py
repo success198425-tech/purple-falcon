@@ -2,7 +2,7 @@
 
 
 # ==================================================
-# 💜 PURPLE FALCON PH v5.0.1 — LIVE SKILLS + SELF-LEARNING + FILE ANALYST + NEWS + LOGO + IMAGE/VIDEO 🇵🇭
+# 💜 PURPLE FALCON PH v6.0 — LIVE SKILLS + SELF-LEARNING + FILE ANALYST + NEWS + LOGO + IMAGE/VIDEO 🇵🇭
 # ==================================================
 #   ✅ Live skills that learn: weather, exchange rates, world clock, Wikipedia, web search, web pages, earthquakes, dictionary,
 #      country facts, calculator — used whenever the AI model can't answer or is unreachable (falcon_skills.py)
@@ -42,6 +42,7 @@ from urllib.parse import quote
 import secrets
 import requests
 import gradio as gr
+from falcon_v6_core import MemoryContext as V6MemoryContext, AgentResult as V6AgentResult, V6Orchestrator
 from PIL import Image, ImageDraw, ImageFont
 import time
 
@@ -268,7 +269,7 @@ except ImportError:
     websearch, WEB_STATUS = None, "⚠️ falcon_websearch.py not found next to this script"
 
 print("=" * 60)
-print("💜 PURPLE FALCON PH v5.0.1 — PROTECTED 🇵🇭")
+print("💜 PURPLE FALCON PH v6.0 — PROTECTED 🇵🇭")
 if ENV_PATH:
     print(f"   .env file:     {'✅' if not ENV_PROBLEMS else '⚠️'} {ENV_LOADED} setting(s) read")
     for _p in ENV_PROBLEMS: print(f"                  ↳ {_p}")
@@ -301,12 +302,11 @@ try:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 except NameError:
     BASE_DIR = os.getcwd()
-# Render-safe persistent memory paths. BASE_DIR already exists at this point.
 DATA_DIR = os.getenv("PF_DATA_DIR", os.path.join(BASE_DIR, "data")).strip() or os.path.join(BASE_DIR, "data")
 try:
     os.makedirs(DATA_DIR, exist_ok=True)
-except (OSError, PermissionError) as exc:
-    print(f"Persistent data path unavailable ({DATA_DIR}): {exc}. Falling back to source-local data.")
+except OSError as exc:
+    print(f"Persistent path unavailable ({DATA_DIR}): {exc}; using source-local data.")
     DATA_DIR = os.path.join(BASE_DIR, "data")
     os.makedirs(DATA_DIR, exist_ok=True)
 CHAT_FILE = os.path.join(DATA_DIR, "purple_falcon_chat.json")
@@ -372,7 +372,7 @@ def build_status_bar_html():
              ("Database", "Not Connected", False)]
     parts = "".join(f'<div class="pf-status-item{" ok" if ok else ""}"><span class="dot"></span><span>{name}: {state}</span></div>'
                     for name, state, ok in items)
-    return parts + '<div class="pf-status-item"><span>Purple Falcon AI v5.0.1</span></div>'
+    return parts + '<div class="pf-status-item"><span>Purple Falcon AI v6.0</span></div>'
 
 def build_sidebar_nav_html():
     soon = lambda icon, label: (f'<div class="pf-nav-item disabled"><span>{icon}</span>'
@@ -1176,32 +1176,25 @@ def _chat_session_path(request=None):
     os.makedirs(CHAT_SESSIONS_DIR, exist_ok=True)
     return os.path.join(CHAT_SESSIONS_DIR, f"{digest}.json")
 
-def _atomic_json_write(path, data):
-    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
-    tmp=path+".tmp"
-    with open(tmp,"w",encoding="utf-8") as f:
-        json.dump(data,f,ensure_ascii=False,indent=2)
-        f.flush()
-        try: os.fsync(f.fileno())
-        except OSError: pass
-    os.replace(tmp,path)
-
 def load_active_context():
-    ctx={"active_topic":"","current_goal":"","pending_task":"","last_user_message":"","updated_at":""}
+    ctx={"active_topic":"","current_goal":"","pending_task":"","updated_at":""}
     try:
         if os.path.isfile(ACTIVE_CONTEXT_FILE):
             raw=json.load(open(ACTIVE_CONTEXT_FILE,"r",encoding="utf-8"))
-            if isinstance(raw,dict):
-                for k in ctx: ctx[k]=str(raw.get(k) or "")
+            if isinstance(raw,dict): ctx.update({k:str(raw.get(k) or "") for k in ctx})
     except Exception as e: print(f"Active context read warning: {e}")
     return ctx
 
-def save_active_context(**updates):
+def save_active_context(topic="", goal="", pending=""):
     ctx=load_active_context()
-    for k,v in updates.items():
-        if k in ctx and v is not None: ctx[k]=str(v)[:1200]
+    if topic: ctx["active_topic"]=topic[:800]
+    if goal: ctx["current_goal"]=goal[:1000]
+    if pending: ctx["pending_task"]=pending[:1000]
     ctx["updated_at"]=datetime.now(timezone.utc).isoformat()
-    try: _atomic_json_write(ACTIVE_CONTEXT_FILE,ctx)
+    tmp=ACTIVE_CONTEXT_FILE+".tmp"
+    try:
+        with open(tmp,"w",encoding="utf-8") as f: json.dump(ctx,f,ensure_ascii=False,indent=2)
+        os.replace(tmp,ACTIVE_CONTEXT_FILE)
     except Exception as e: print(f"Active context write warning: {e}")
     return ctx
 
@@ -3213,6 +3206,45 @@ def maybe_trace_plan(plan):
     if PF_ORCH_DEBUG:
         print('🧠 ORCHESTRATOR', {k:v for k,v in plan.items() if k != 'reasons'}, 'reasons=', plan['reasons'])
 
+def _v6_memory(request=None):
+    ctx=load_active_context()
+    hist=list(load_chat(request).get("messages") or [])
+    if hist and hist[-1].get("role")=="user": hist=hist[:-1]
+    recent=[{"role":m.get("role","assistant"),"content":str(m.get("text") or "")} for m in hist[-20:]]
+    topic=ctx.get("active_topic","")
+    if not topic:
+        for m in reversed(hist):
+            if m.get("role") == "user":
+                t=str(m.get("text") or "").strip()
+                if len(t.split()) >= 4: topic=t; break
+    return V6MemoryContext(active_topic=topic,current_goal=ctx.get("current_goal",""),pending_task=ctx.get("pending_task",""),recent_messages=recent)
+
+def _v6_brain_adapter(message, memory, request=None):
+    prompt=message
+    if memory.active_topic: prompt += f"\n\n[Active conversation topic: {memory.active_topic}]"
+    reply=call_ai(_ai_messages(prompt, [], request)) if AI_CONFIGURED else CHAT_PROVIDER_FALLBACK
+    return V6AgentResult(not ai_failed(reply), reply if not ai_failed(reply) else "", "brain", error="provider_unavailable" if ai_failed(reply) else "")
+
+def _v6_web_adapter(message, memory, request=None):
+    ans=web_answer(message, request, use_ai=AI_CONFIGURED)
+    return V6AgentResult(bool(ans), ans or "", "web", error="web_unavailable" if not ans else "")
+
+def _v6_code_adapter(message, memory, request=None):
+    prompt=message
+    if memory.active_topic: prompt += f"\n\n[Project context: {memory.active_topic}]"
+    reply=call_ai(_ai_messages(prompt, [], request)) if AI_CONFIGURED else CHAT_PROVIDER_FALLBACK
+    return V6AgentResult(not ai_failed(reply), reply if not ai_failed(reply) else "", "coding", error="coding_provider_unavailable" if ai_failed(reply) else "")
+
+def v6_route_turn(message, paths, request=None):
+    memory=_v6_memory(request)
+    brain=lambda q,m: _v6_brain_adapter(q,m,request)
+    web=lambda q,m: _v6_web_adapter(q,m,request)
+    code=lambda q,m: _v6_code_adapter(q,m,request)
+    orch=V6Orchestrator(brain,web,code=code)
+    image_paths=[p for p in paths if is_image_file(p)]
+    result=orch.handle(message,memory,has_image=bool(image_paths),has_file=bool(paths))
+    return result
+
 def chat_reply(message, paths, request=None):
     """→ (reply, skill keys). Never returns an error message: if the AI can't be reached, live skills answer instead."""
     tip = "" if AI_CONFIGURED else "\n\n💡 *Tip: add GROQ_API_KEY, GEMINI_API_KEY, or OPENROUTER_API_KEY to your .env file to unlock full AI conversation.*"
@@ -3222,6 +3254,12 @@ def chat_reply(message, paths, request=None):
         topic = fact[:80] if fact else "User knowledge"
         if remember_knowledge(topic, fact, source="user", verified=False):
             return "🧠 Saved to Purple Falcon's local knowledge base as user-provided knowledge. I will treat it as stored information, not independently verified fact.", []
+    v6_memory=_v6_memory(request)
+    v6_probe=V6Orchestrator(lambda q,m: V6AgentResult(False, route="brain"), lambda q,m: V6AgentResult(False, route="web"), code=lambda q,m: V6AgentResult(False, route="coding"))
+    v6_intent=v6_probe.router.classify(message,v6_memory,has_image=any(is_image_file(p) for p in paths),has_file=bool(paths))
+    if v6_intent.name in v6_probe.validator.LOCAL and not paths:
+        local=v6_probe.local.execute(v6_intent,v6_memory)
+        return local.content, []
     coding_request = is_coding_request(message)
     orch = reasoning_plan(message, paths, coding_request) if PF_ORCHESTRATOR else {'route':'legacy','deep_reasoning':False,'needs_web':False,'needs_live':False,'verify_web':False,'action_requested':False}
     maybe_trace_plan(orch)
@@ -3235,7 +3273,7 @@ def chat_reply(message, paths, request=None):
     live_ok = bool(skills) and not paths and bool(message) and not coding_request
     web_ok = bool(websearch) and websearch.ENABLED and not paths and bool(message) and not coding_request
     # 1) real-world question → look it up live first, then let the AI explain what was found
-    if live_ok and skills.wants_live(message) and orch.get('route') != 'safe-web':
+    if live_ok and v6_intent.name not in v6_probe.validator.LOCAL and v6_intent.name != 'coding' and skills.wants_live(message) and orch.get('route') != 'safe-web':
         res = skills.research(message)
         if res.ok:
             reply = call_ai(skills.grounded_messages(message, res)) if AI_CONFIGURED else ""
@@ -3243,7 +3281,7 @@ def chat_reply(message, paths, request=None):
                 return f"{reply.strip()}\n\n{skills.sources_footer(res)}".strip(), res.keys
             return skills.compose(res, "🧠 My AI brain is resting, so here's what I found live:") + tip, res.keys
     # 1b) needs fresh / verifiable info (or the user said "search…") → answer from the live web
-    if web_ok and (orch.get('needs_web') or websearch.should_search(message)):
+    if web_ok and v6_intent.requires_web and (orch.get('needs_web') or websearch.should_search(message)):
         ans = web_answer(message, request)
         if ans:
             return ans, []
@@ -3290,11 +3328,16 @@ def chat_reply(message, paths, request=None):
                            "Execution runs with the configured timeout.]\n" + execution_result)
     reply = call_ai(_ai_messages(ai_message, paths, request)) if AI_CONFIGURED else ""
     if reply == CHAT_PROVIDER_FALLBACK:
-        if web_ok:                                   # every AI provider is down → answer from the web
-            ans = web_answer(message, request, use_ai=False)
-            if ans:
-                return ans, []
-        local_reply = offline_reasoning_reply(message)
+        if v6_intent.name in v6_probe.validator.LOCAL:
+            return v6_probe.local.execute(v6_intent,v6_memory).content, []
+        if v6_intent.name == 'coding':
+            return "🛠️ Coding intent detected, but the coding brain is unavailable. Purple Falcon v6 will not replace this with unrelated web results.", []
+        local_reply = offline_reasoning_reply(((v6_memory.active_topic or "")+" "+message).strip())
+        if local_reply and not v6_intent.requires_web:
+            return local_reply, []
+        if web_ok and v6_intent.requires_web:
+            ans=web_answer(message,request,use_ai=False)
+            if ans: return ans, []
         return (local_reply or reply), []
     if not ai_failed(reply):
         if web_ok and websearch.reply_is_unsure(reply):   # the model admits it doesn't know → check the web
@@ -3302,7 +3345,7 @@ def chat_reply(message, paths, request=None):
             if ans:
                 return ans, []
         return reply, []
-    if web_ok:                                       # AI returned an error string → web before other fallbacks
+    if web_ok and v6_intent.requires_web:            # v6 selective web fallback
         ans = web_answer(message, request, use_ai=False)
         if ans:
             return ans, []
@@ -3316,7 +3359,7 @@ def chat_reply(message, paths, request=None):
     if _SMALLTALK.match(message or ""):
         return ("Kumusta, kaibigan! 💜 My AI brain is taking a short rest, but I can still check the real world for you — try "
                 "“weather in Cebu”, “USD to PHP”, “who is …”, or tap one of the news buttons." + tip), []
-    if live_ok and ("?" in message or _OPEN_QUESTION.match(message) or len(message.split()) <= 4):
+    if live_ok and v6_intent.name == 'external_current' and ("?" in message or _OPEN_QUESTION.match(message) or len(message.split()) <= 4):
         res = skills.research(message, generic=True)
         if res.ok:
             return skills.compose(res, "🧠 My AI brain is resting, so I checked live sources for you:") + tip, res.keys
@@ -3558,7 +3601,7 @@ with gr.Blocks(title=TITLE, **blocks_kwargs) as demo:
                 'Tap 🎤 in the composer to speak, or toggle spoken replies below.</div>')
         gr.HTML(f'<div class="pf-settings-group-title">About</div>'
                 f'<div style="font-size:.78rem;color:var(--pf-text2);line-height:1.6">'
-                f'Purple Falcon AI v5.0.1<br>Code execution: {"On" if RUN_CODE_ENABLED else "Off"}<br>'
+                f'Purple Falcon AI v6.0<br>Code execution: {"On" if RUN_CODE_ENABLED else "Off"}<br>'
                 f'Chat AI: {"Connected" if AI_CONFIGURED else "Not configured"}</div>')
 
     pending_file = gr.State(None)
