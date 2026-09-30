@@ -2,7 +2,7 @@
 
 
 # ==================================================
-# 💜 PURPLE FALCON PH v3.9 — LIVE SKILLS + SELF-LEARNING + FILE ANALYST + NEWS + LOGO + IMAGE/VIDEO 🇵🇭
+# 💜 PURPLE FALCON PH v4.0 — LIVE SKILLS + SELF-LEARNING + FILE ANALYST + NEWS + LOGO + IMAGE/VIDEO 🇵🇭
 # ==================================================
 #   ✅ Live skills that learn: weather, exchange rates, world clock, Wikipedia, web search, web pages, earthquakes, dictionary,
 #      country facts, calculator — used whenever the AI model can't answer or is unreachable (falcon_skills.py)
@@ -269,7 +269,7 @@ except ImportError:
     websearch, WEB_STATUS = None, "⚠️ falcon_websearch.py not found next to this script"
 
 print("=" * 60)
-print("💜 PURPLE FALCON PH v3.9 — PROTECTED 🇵🇭")
+print("💜 PURPLE FALCON PH v4.0 — PROTECTED 🇵🇭")
 if ENV_PATH:
     print(f"   .env file:     {'✅' if not ENV_PROBLEMS else '⚠️'} {ENV_LOADED} setting(s) read")
     for _p in ENV_PROBLEMS: print(f"                  ↳ {_p}")
@@ -361,7 +361,7 @@ def build_status_bar_html():
              ("Database", "Not Connected", False)]
     parts = "".join(f'<div class="pf-status-item{" ok" if ok else ""}"><span class="dot"></span><span>{name}: {state}</span></div>'
                     for name, state, ok in items)
-    return parts + '<div class="pf-status-item"><span>Purple Falcon AI v3.9</span></div>'
+    return parts + '<div class="pf-status-item"><span>Purple Falcon AI v4.0</span></div>'
 
 def build_sidebar_nav_html():
     soon = lambda icon, label: (f'<div class="pf-nav-item disabled"><span>{icon}</span>'
@@ -3173,6 +3173,41 @@ def maybe_trace_plan(plan):
     if PF_ORCH_DEBUG:
         print('🧠 ORCHESTRATOR', {k:v for k,v in plan.items() if k != 'reasons'}, 'reasons=', plan['reasons'])
 
+_LOCAL_CAPABILITY_RE = re.compile(
+    r"\b(?:your skills|skills right now|what can you do|what are your capabilities|capabilities right now|"
+    r"available skills|features right now|what do you support|help menu|your tools|what tools)\b", re.I)
+_LOCAL_STATUS_RE = re.compile(r"\b(?:your status|system status|what is enabled|what's enabled|provider status|brain status)\b", re.I)
+
+def is_local_system_question(message):
+    text=(message or '').strip()
+    return bool(_LOCAL_CAPABILITY_RE.search(text) or _LOCAL_STATUS_RE.search(text))
+
+def local_capabilities_reply(message):
+    """Answer Falcon self/capability questions locally; never search the public web for them."""
+    web_on=bool(websearch and getattr(websearch,'ENABLED',False) and PF_SAFE_WEB)
+    provider_names=[]
+    if PEEPAK_ENABLED: provider_names.append('Local Peepak/Ollama')
+    if GEMINI_API_KEY: provider_names.append('Gemini')
+    if GROQ_API_KEY: provider_names.append('Groq')
+    if OPENROUTER_API_KEY: provider_names.append('OpenRouter')
+    if HF_API_KEY: provider_names.append('Hugging Face')
+    if POLLINATIONS_API_KEY: provider_names.append('Pollinations')
+    providers=', '.join(provider_names) if provider_names else 'No AI provider currently configured/reachable'
+    return f"""🧠 **Purple Falcon capabilities right now**
+
+- **Conversation + reasoning:** context-aware chat and Reasoning Orchestrator.
+- **Conversation memory:** recent chat history and follow-up intent recovery.
+- **Local knowledge:** stored Purple Falcon knowledge with offline fallback.
+- **Web research:** {'enabled' if web_on else 'disabled'}; used when current/external evidence is needed, not for questions about Purple Falcon itself.
+- **Vision:** uploaded-image understanding and visual feedback when a vision-capable provider is available.
+- **Math:** safe arithmetic plus advanced quantitative/math reasoning guidance.
+- **Coding:** code explanation/debugging; local execution remains controlled by `PF_RUN_CODE`.
+- **Files/data:** attached-file reading and analysis where the installed parser/analyst supports the format.
+- **Media:** image/video generation when the configured media provider is available.
+- **Current AI routes:** {providers}.
+
+If all AI providers are unavailable, Purple Falcon should keep using conversation memory, local knowledge, deterministic tools, and context-aware web fallback instead of doing a generic web search for this capability question."""
+
 _FOLLOWUP_RE = re.compile(
     r"\b(?:bakit|why|paano|how|ano|what|saan|where|kailan|when|sino|who|"
     r"hindi related|not related|wrong answer|mali|ulit|again|continue|tuloy|"
@@ -3213,6 +3248,9 @@ def web_answer_for_followup(message, request=None, use_ai=False):
 def chat_reply(message, paths, request=None):
     """→ (reply, skill keys). Never returns an error message: if the AI can't be reached, live skills answer instead."""
     tip = "" if AI_CONFIGURED else "\n\n💡 *Tip: add GROQ_API_KEY, GEMINI_API_KEY, or OPENROUTER_API_KEY to your .env file to unlock full AI conversation.*"
+    # System/self questions are authoritative local intents. Never send them to generic web search.
+    if is_local_system_question(message) and not paths:
+        return local_capabilities_reply(message), []
     learn_match = should_remember_knowledge(message)
     if learn_match and not paths:
         fact = learn_match.group(1).strip()
@@ -3232,7 +3270,7 @@ def chat_reply(message, paths, request=None):
     live_ok = bool(skills) and not paths and bool(message) and not coding_request
     web_ok = bool(websearch) and websearch.ENABLED and not paths and bool(message) and not coding_request
     # 1) real-world question → look it up live first, then let the AI explain what was found
-    if live_ok and not is_conversation_followup(message) and skills.wants_live(message) and orch.get('route') != 'safe-web':
+    if live_ok and not is_local_system_question(message) and not is_conversation_followup(message) and skills.wants_live(message) and orch.get('route') != 'safe-web':
         res = skills.research(message)
         if res.ok:
             reply = call_ai(skills.grounded_messages(message, res)) if AI_CONFIGURED else ""
@@ -3240,7 +3278,7 @@ def chat_reply(message, paths, request=None):
                 return f"{reply.strip()}\n\n{skills.sources_footer(res)}".strip(), res.keys
             return skills.compose(res, "🧠 My AI brain is resting, so here's what I found live:") + tip, res.keys
     # 1b) needs fresh / verifiable info (or the user said "search…") → answer from the live web
-    if web_ok and (orch.get('needs_web') or websearch.should_search(message)):
+    if web_ok and not is_local_system_question(message) and (orch.get('needs_web') or websearch.should_search(message)):
         ans = (web_answer_for_followup(message, request, use_ai=AI_CONFIGURED)
                if is_conversation_followup(message) else web_answer(message, request))
         if ans:
@@ -3315,7 +3353,7 @@ def chat_reply(message, paths, request=None):
     if _SMALLTALK.match(message or ""):
         return ("Kumusta, kaibigan! 💜 My AI brain is taking a short rest, but I can still check the real world for you — try "
                 "“weather in Cebu”, “USD to PHP”, “who is …”, or tap one of the news buttons." + tip), []
-    if live_ok and not is_conversation_followup(message) and ("?" in message or _OPEN_QUESTION.match(message) or len(message.split()) <= 4):
+    if live_ok and not is_local_system_question(message) and not is_conversation_followup(message) and ("?" in message or _OPEN_QUESTION.match(message) or len(message.split()) <= 4):
         res = skills.research(message, generic=True)
         if res.ok:
             return skills.compose(res, "🧠 My AI brain is resting, so I checked live sources for you:") + tip, res.keys
@@ -3561,7 +3599,7 @@ with gr.Blocks(title=TITLE, **blocks_kwargs) as demo:
                 'Tap 🎤 in the composer to speak, or toggle spoken replies below.</div>')
         gr.HTML(f'<div class="pf-settings-group-title">About</div>'
                 f'<div style="font-size:.78rem;color:var(--pf-text2);line-height:1.6">'
-                f'Purple Falcon AI v3.9<br>Code execution: {"On" if RUN_CODE_ENABLED else "Off"}<br>'
+                f'Purple Falcon AI v4.0<br>Code execution: {"On" if RUN_CODE_ENABLED else "Off"}<br>'
                 f'Chat AI: {"Connected" if AI_CONFIGURED else "Not configured"}</div>')
 
     pending_file = gr.State(None)
