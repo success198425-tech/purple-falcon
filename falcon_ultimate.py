@@ -2,7 +2,7 @@
 
 
 # ==================================================
-# 💜 PURPLE FALCON PH v6.1 — LIVE SKILLS + SELF-LEARNING + FILE ANALYST + NEWS + LOGO + IMAGE/VIDEO 🇵🇭
+# 💜 PURPLE FALCON PH v6.1.1 — LIVE SKILLS + SELF-LEARNING + FILE ANALYST + NEWS + LOGO + IMAGE/VIDEO 🇵🇭
 # ==================================================
 #   ✅ Live skills that learn: weather, exchange rates, world clock, Wikipedia, web search, web pages, earthquakes, dictionary,
 #      country facts, calculator — used whenever the AI model can't answer or is unreachable (falcon_skills.py)
@@ -275,7 +275,7 @@ except ImportError:
     websearch, WEB_STATUS = None, "⚠️ falcon_websearch.py not found next to this script"
 
 print("=" * 60)
-print("💜 PURPLE FALCON PH v6.1 — PROTECTED 🇵🇭")
+print("💜 PURPLE FALCON PH v6.1.1 — PROTECTED 🇵🇭")
 if ENV_PATH:
     print(f"   .env file:     {'✅' if not ENV_PROBLEMS else '⚠️'} {ENV_LOADED} setting(s) read")
     for _p in ENV_PROBLEMS: print(f"                  ↳ {_p}")
@@ -367,7 +367,7 @@ def build_status_bar_html():
              ("Database", "Not Connected", False)]
     parts = "".join(f'<div class="pf-status-item{" ok" if ok else ""}"><span class="dot"></span><span>{name}: {state}</span></div>'
                     for name, state, ok in items)
-    return parts + '<div class="pf-status-item"><span>Purple Falcon AI v6.1</span></div>'
+    return parts + '<div class="pf-status-item"><span>Purple Falcon AI v6.1.1</span></div>'
 
 def build_sidebar_nav_html():
     soon = lambda icon, label: (f'<div class="pf-nav-item disabled"><span>{icon}</span>'
@@ -1993,17 +1993,43 @@ Return concise visual evidence: scene, important objects, visible text, relevant
 Do not invent identity, intent, emotion, hidden state, or facts not visible in the image.
 USER REQUEST: {user}"""
 
+_VISION_DENIAL_RE = re.compile(
+    r"(?:there (?:is|isn't|is not) (?:an )?image|no image (?:is )?attached|image (?:is )?not attached|"
+    r"can't (?:see|view|access) (?:the |your )?image|cannot (?:see|view|access) (?:the |your )?image|"
+    r"don't have access to (?:the |your )?image|do not have access to (?:the |your )?image|"
+    r"please (?:upload|attach|send) (?:the |an |your )?(?:image|picture)|"
+    r"could you (?:please )?(?:upload|attach|send) (?:the |an |your )?(?:image|picture))", re.I)
+
+def falcon_vision_answer_invalid(text):
+    """Evidence lock: once Eyes saw pixels, downstream text brains may not deny the image exists."""
+    return bool(text and _VISION_DENIAL_RE.search(text))
+
 def falcon_reason_over_vision(user_message, visual_evidence, history_messages):
-    """Use the normal all-working-brains chain to reason over actual visual evidence."""
-    if not visual_evidence: return visual_evidence
-    prompt=("Purple Falcon Eyes returned verified visual evidence below. Use it with recent conversation to answer naturally as Purple Falcon. "
-            "Do not add visual claims that are absent from the evidence.\n\n"
-            f"USER REQUEST:\n{user_message}\n\nVISUAL EVIDENCE:\n{visual_evidence}")
-    msgs=list(history_messages or [])
-    if not msgs or msgs[0].get("role") != "system": msgs=[{"role":"system","content":get_system_prompt()}]+msgs
+    """Reason over trusted Eyes evidence; reject downstream answers that contradict image availability."""
+    if not visual_evidence or not visual_evidence.strip(): return visual_evidence
+    system=(get_system_prompt() + "\n\nVISION EVIDENCE LOCK: Purple Falcon Eyes has already inspected the attached image and produced visual evidence. "
+            "The image WAS attached and WAS available to the visual subsystem. Never say that no image was attached, never ask the user to re-upload solely because you cannot see raw pixels, and never contradict the supplied visual evidence. "
+            "You are the reasoning layer. Reason from the visual evidence below and the recent conversation. If evidence is insufficient, state exactly what is unknown.")
+    prompt=(f"USER REQUEST:\n{user_message}\n\n"
+            "TRUSTED VISUAL EVIDENCE FROM PURPLE FALCON EYES:\n"
+            f"{visual_evidence}\n\n"
+            "Answer as Purple Falcon. The visual evidence above is authoritative for what Eyes observed; do not claim that the image is missing.")
+    msgs=[{"role":"system","content":system}]
+    # Keep only recent textual conversation; do not carry stale image-denial assistant messages into this synthesis.
+    for m in (history_messages or [])[-6:]:
+        if not isinstance(m,dict): continue
+        role=m.get("role")
+        content=m.get("content") or m.get("text") or ""
+        if role in ("user","assistant") and isinstance(content,str) and not falcon_vision_answer_invalid(content):
+            msgs.append({"role":role,"content":content})
     msgs.append({"role":"user","content":prompt})
-    result=call_ai(msgs,temperature=0.55,max_tokens=1800)
-    return visual_evidence if ai_failed(result) else result.strip()
+    result=call_ai(msgs,temperature=0.45,max_tokens=1800)
+    if ai_failed(result) or falcon_vision_answer_invalid(result):
+        if result and falcon_vision_answer_invalid(result):
+            print("⚠️ Vision Evidence Lock rejected downstream image-denial answer")
+        # Trusted Eyes evidence is preferable to a hallucinated denial from a text-only reasoner.
+        return visual_evidence.strip()
+    return result.strip()
 
 def call_falcon_perception(image_paths, message):
     """Optional HTTP adapter. Expected service contract: POST JSON {images:[data URLs], query:str} -> {text|result:str}."""
@@ -3546,7 +3572,7 @@ with gr.Blocks(title=TITLE, **blocks_kwargs) as demo:
                 'Tap 🎤 in the composer to speak, or toggle spoken replies below.</div>')
         gr.HTML(f'<div class="pf-settings-group-title">About</div>'
                 f'<div style="font-size:.78rem;color:var(--pf-text2);line-height:1.6">'
-                f'Purple Falcon AI v6.1<br>Code execution: {"On" if RUN_CODE_ENABLED else "Off"}<br>'
+                f'Purple Falcon AI v6.1.1<br>Code execution: {"On" if RUN_CODE_ENABLED else "Off"}<br>'
                 f'Chat AI: {"Connected" if AI_CONFIGURED else "Not configured"}</div>')
 
     pending_file = gr.State(None)
