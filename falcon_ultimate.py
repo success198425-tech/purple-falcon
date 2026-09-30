@@ -2,7 +2,7 @@
 
 
 # ==================================================
-# 💜 PURPLE FALCON PH v4.4 — LIVE SKILLS + SELF-LEARNING + FILE ANALYST + NEWS + LOGO + IMAGE/VIDEO 🇵🇭
+# 💜 PURPLE FALCON PH v5.0 — LIVE SKILLS + SELF-LEARNING + FILE ANALYST + NEWS + LOGO + IMAGE/VIDEO 🇵🇭
 # ==================================================
 #   ✅ Live skills that learn: weather, exchange rates, world clock, Wikipedia, web search, web pages, earthquakes, dictionary,
 #      country facts, calculator — used whenever the AI model can't answer or is unreachable (falcon_skills.py)
@@ -104,8 +104,17 @@ ENV_PATH, ENV_LOADED, ENV_PROBLEMS = load_env_file()
 # ✅ OFFICIALLY VERIFIED — SEPT 27, 2026
 # Groq: Llama moved to ENTERPRISE only Aug 16 → use GPT-OSS
 # ==================================================
-CHAT_FILE = "purple_falcon_chat.json"
-FRESH_START_EACH_LAUNCH = False
+DATA_DIR = os.getenv("PF_DATA_DIR", "/var/data").strip() or "/var/data"
+try:
+    os.makedirs(DATA_DIR, exist_ok=True)
+except OSError:
+    DATA_DIR = BASE_DIR
+    os.makedirs(DATA_DIR, exist_ok=True)
+CHAT_FILE = os.path.join(DATA_DIR, "purple_falcon_chat.json")
+ACTIVE_CONTEXT_FILE = os.path.join(DATA_DIR, "active_context.json")
+MEMORY_DIR = os.path.join(DATA_DIR, "falcon_memory")
+os.makedirs(MEMORY_DIR, exist_ok=True)
+FRESH_START_EACH_LAUNCH = False  # keep persistent memory across Render restarts/deploys
 SHARE_PUBLIC_LINK = os.getenv("PF_SHARE", "0").strip().lower() in ("1", "true", "yes", "on") or "--share" in sys.argv
 
 # 🟢 GROQ — Free Tier ✅ (Llama models = Enterprise only now)
@@ -269,7 +278,7 @@ except ImportError:
     websearch, WEB_STATUS = None, "⚠️ falcon_websearch.py not found next to this script"
 
 print("=" * 60)
-print("💜 PURPLE FALCON PH v4.4 — PROTECTED 🇵🇭")
+print("💜 PURPLE FALCON PH v5.0 — PROTECTED 🇵🇭")
 if ENV_PATH:
     print(f"   .env file:     {'✅' if not ENV_PROBLEMS else '⚠️'} {ENV_LOADED} setting(s) read")
     for _p in ENV_PROBLEMS: print(f"                  ↳ {_p}")
@@ -291,6 +300,9 @@ _ai_chain.extend(("Pollinations", "🐵 Peepak Local (final fallback)"))
 print(f"   AI chat chain: {' → '.join(_ai_chain)}")
 print(f"   Reasoning:     {'✅ structured step-by-step + self-check' if REASONING_MODE else '◻ off (PF_REASONING=0)'}")
 print(f"   Knowledge:     {len(KNOWLEDGE_LIBRARY)} topics loaded")
+print(f"   Persistent dir: {DATA_DIR}")
+print(f"   Chat memory:    {CHAT_FILE}")
+print(f"   Active context: {ACTIVE_CONTEXT_FILE}")
 print("=" * 60)
 
 # ==================================================
@@ -361,7 +373,7 @@ def build_status_bar_html():
              ("Database", "Not Connected", False)]
     parts = "".join(f'<div class="pf-status-item{" ok" if ok else ""}"><span class="dot"></span><span>{name}: {state}</span></div>'
                     for name, state, ok in items)
-    return parts + '<div class="pf-status-item"><span>Purple Falcon AI v4.4</span></div>'
+    return parts + '<div class="pf-status-item"><span>Purple Falcon AI v5.0</span></div>'
 
 def build_sidebar_nav_html():
     soon = lambda icon, label: (f'<div class="pf-nav-item disabled"><span>{icon}</span>'
@@ -1165,6 +1177,50 @@ def _chat_session_path(request=None):
     os.makedirs(CHAT_SESSIONS_DIR, exist_ok=True)
     return os.path.join(CHAT_SESSIONS_DIR, f"{digest}.json")
 
+def _atomic_json_write(path, data):
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+        f.flush()
+        try: os.fsync(f.fileno())
+        except OSError: pass
+    os.replace(tmp, path)
+
+def load_active_context():
+    default={"active_topic":"","current_goal":"","pending_task":"","last_user_message":"","updated_at":""}
+    try:
+        if os.path.isfile(ACTIVE_CONTEXT_FILE):
+            raw=json.load(open(ACTIVE_CONTEXT_FILE,"r",encoding="utf-8"))
+            if isinstance(raw,dict): default.update({k:str(raw.get(k) or '') for k in default})
+    except Exception as e:
+        print(f"Active-context read warning: {e}")
+    return default
+
+def save_active_context(**updates):
+    ctx=load_active_context()
+    for k,v in updates.items():
+        if k in ctx and v is not None: ctx[k]=str(v)[:1200]
+    ctx["updated_at"]=datetime.now(timezone.utc).isoformat()
+    try:
+        _atomic_json_write(ACTIVE_CONTEXT_FILE,ctx)
+    except Exception as e:
+        print(f"Active-context write warning: {e}")
+    return ctx
+
+_TOPIC_META_RE=re.compile(r"^\\s*(?:bakit|why|ano(?:ng)? nangyari|what happened|continue|tuloy|ulit|again|memory|remember|sagot|answer|ito|iyan|yan|yun|yung|this|that|it)\\b",re.I)
+def update_active_topic_from_user(text):
+    text=re.sub(r"\\s+"," ",(text or "")).strip()
+    if not text: return load_active_context()
+    ctx=load_active_context()
+    updates={"last_user_message":text}
+    # Do not overwrite a substantive topic with short follow-up/meta language.
+    if len(text.split())>=4 and not _TOPIC_META_RE.search(text):
+        updates["active_topic"]=text[:500]
+        updates["current_goal"]=text[:700]
+        updates["pending_task"]=text[:700]
+    return save_active_context(**updates)
+
 def load_chat(request: gr.Request = None):
     path = _chat_session_path(request)
     if not path or not os.path.exists(path): return {"messages": []}
@@ -1471,7 +1527,7 @@ def build_user_prompt(message, paths):
 # ==================================================
 # 🧠 LOCAL KNOWLEDGE BASE + OFFLINE REASONING FALLBACK
 # ==================================================
-KNOWLEDGE_DB_FILE = os.getenv("PF_KNOWLEDGE_DB", os.path.join(BASE_DIR, "purple_falcon_knowledge.json"))
+KNOWLEDGE_DB_FILE = os.getenv("PF_KNOWLEDGE_DB", os.path.join(DATA_DIR, "purple_falcon_knowledge.json"))
 KNOWLEDGE_MAX_ITEMS = int(os.getenv("PF_KNOWLEDGE_MAX_ITEMS", "5000"))
 
 def _knowledge_tokens(text):
@@ -3173,55 +3229,28 @@ def maybe_trace_plan(plan):
     if PF_ORCH_DEBUG:
         print('🧠 ORCHESTRATOR', {k:v for k,v in plan.items() if k != 'reasons'}, 'reasons=', plan['reasons'])
 
-# ==================================================
-# 🧠 MEMORY-FIRST CONVERSATION ROUTER
-# ==================================================
-_CTX_FOLLOWUP_RE = re.compile(r"\b(?:bakit|why|ano(?:ng)? nangyari|what happened|paano|how|tuloy|continue|ulit|again|previous|last answer|sagot|answer|ito|iyan|yan|yun|yung|that|this|it)\b", re.I)
-_CTX_MEMORY_RE = re.compile(r"\b(?:memory|remember|naalala|natatandaan|conversation|pinag.?uusapan|discussing|previous topic)\b", re.I)
-
-def history_before_current(request=None, limit=24):
-    hist=list(load_chat(request).get('messages') or [])
-    if hist and hist[-1].get('role')=='user': hist=hist[:-1]
-    out=[]
-    for m in hist[-limit:]:
-        text=re.sub(r"\s+"," ",str(m.get('text') or '')).strip()
-        if text: out.append({'role':m.get('role','assistant'),'text':text})
-    return out
-
-def is_contextual_followup(message):
+_MEMORY_FOLLOWUP_RE=re.compile(r"\\b(?:bakit|why|ano(?:ng)? nangyari|what happened|memory|remember|naalala|natatandaan|continue|tuloy|ulit|again|previous|last answer|sagot|answer|ito|iyan|yan|yun|yung|this|that|it)\\b",re.I)
+def is_memory_followup(message):
     text=(message or '').strip()
-    return bool(text) and len(text.split()) <= 24 and bool(_CTX_FOLLOWUP_RE.search(text) or _CTX_MEMORY_RE.search(text))
+    return bool(text) and len(text.split())<=24 and bool(_MEMORY_FOLLOWUP_RE.search(text))
 
-def recover_conversation_context(message, request=None):
-    hist=history_before_current(request)
-    users=[m['text'] for m in hist if m['role']=='user']
-    assistants=[m['text'] for m in hist if m['role']=='assistant']
-    # skip previous complaint/meta turns when looking for the substantive subject
-    substantive=[]
-    for text in users:
-        if not is_contextual_followup(text) or len(text.split()) > 12:
-            substantive.append(text)
-    topic=(substantive[-1] if substantive else (users[-1] if users else ''))
-    return {'topic':topic,'last_user':users[-1] if users else '', 'last_assistant':assistants[-1] if assistants else ''}
-
-def offline_context_reply(message, request=None):
-    ctx=recover_conversation_context(message,request)
-    if not ctx['topic']:
-        return "🧠 I still have the memory subsystem, but there is not enough earlier conversation in this session to reconstruct the subject."
-    if _CTX_MEMORY_RE.search(message or ''):
-        return ("🧠 **The conversation memory is still available.** The main AI provider is unavailable, but that should not erase our topic. "
-                f"The most recent substantive topic I can recover is: **{ctx['topic']}**. "
-                "I will keep this as the active context and I will not web-search the phrase asking about my memory.")
-    return ("🧠 I should answer this from our conversation, not from a literal web search. "
-            f"The active earlier topic I recovered is: **{ctx['topic']}**. "
-            "The previous provider failure caused the response problem; the conversation itself is still available.")
+def persistent_memory_reply(message, request=None):
+    ctx=load_active_context()
+    hist=list(load_chat(request).get("messages") or [])
+    if hist and hist[-1].get("role")=="user": hist=hist[:-1]
+    prior_users=[str(m.get("text") or "").strip() for m in hist[-24:] if m.get("role")=="user" and str(m.get("text") or "").strip()]
+    topic=ctx.get("active_topic") or (prior_users[-1] if prior_users else '')
+    if not topic:
+        return "🧠 Persistent memory is online, but I do not have an earlier substantive topic stored for this session yet."
+    if re.search(r"\\b(?:memory|remember|naalala|natatandaan)\\b",message or '',re.I):
+        return f"🧠 **Persistent memory is online.** The active topic stored on disk is: **{topic}**. The main AI can fail without erasing this memory."
+    return f"🧠 I still have our active context. The stored topic is **{topic}**. The provider failure affected the AI response, not the persistent conversation memory."
 
 def chat_reply(message, paths, request=None):
     """→ (reply, skill keys). Never returns an error message: if the AI can't be reached, live skills answer instead."""
     tip = "" if AI_CONFIGURED else "\n\n💡 *Tip: add GROQ_API_KEY, GEMINI_API_KEY, or OPENROUTER_API_KEY to your .env file to unlock full AI conversation.*"
-    if not paths and is_contextual_followup(message):
-        # Memory/meta follow-ups are resolved locally FIRST. Never send complaint words to the web.
-        return offline_context_reply(message, request), []
+    if not paths and is_memory_followup(message):
+        return persistent_memory_reply(message, request), []
     learn_match = should_remember_knowledge(message)
     if learn_match and not paths:
         fact = learn_match.group(1).strip()
@@ -3241,7 +3270,7 @@ def chat_reply(message, paths, request=None):
     live_ok = bool(skills) and not paths and bool(message) and not coding_request
     web_ok = bool(websearch) and websearch.ENABLED and not paths and bool(message) and not coding_request
     # 1) real-world question → look it up live first, then let the AI explain what was found
-    if live_ok and not is_contextual_followup(message) and skills.wants_live(message) and orch.get('route') != 'safe-web':
+    if live_ok and not is_memory_followup(message) and skills.wants_live(message) and orch.get('route') != 'safe-web':
         res = skills.research(message)
         if res.ok:
             reply = call_ai(skills.grounded_messages(message, res)) if AI_CONFIGURED else ""
@@ -3249,7 +3278,7 @@ def chat_reply(message, paths, request=None):
                 return f"{reply.strip()}\n\n{skills.sources_footer(res)}".strip(), res.keys
             return skills.compose(res, "🧠 My AI brain is resting, so here's what I found live:") + tip, res.keys
     # 1b) needs fresh / verifiable info (or the user said "search…") → answer from the live web
-    if web_ok and not is_contextual_followup(message) and (orch.get('needs_web') or websearch.should_search(message)):
+    if web_ok and not is_memory_followup(message) and (orch.get('needs_web') or websearch.should_search(message)):
         ans = web_answer(message, request)
         if ans:
             return ans, []
@@ -3296,9 +3325,9 @@ def chat_reply(message, paths, request=None):
                            "Execution runs with the configured timeout.]\n" + execution_result)
     reply = call_ai(_ai_messages(ai_message, paths, request)) if AI_CONFIGURED else ""
     if reply == CHAT_PROVIDER_FALLBACK:
-        if is_contextual_followup(message):
-            return offline_context_reply(message, request), []
-        local_reply = offline_reasoning_reply(message)
+        if is_memory_followup(message):
+            return persistent_memory_reply(message, request), []
+        local_reply = offline_reasoning_reply((load_active_context().get("active_topic","")+" "+message).strip())
         if local_reply:
             return local_reply, []
         if web_ok:
@@ -3312,7 +3341,7 @@ def chat_reply(message, paths, request=None):
             if ans:
                 return ans, []
         return reply, []
-    if web_ok and not is_contextual_followup(message): # contextual follow-ups must remain conversation-bound
+    if web_ok and not is_memory_followup(message):    # memory follow-ups never become literal web searches
         ans = web_answer(message, request, use_ai=False)
         if ans:
             return ans, []
@@ -3568,7 +3597,7 @@ with gr.Blocks(title=TITLE, **blocks_kwargs) as demo:
                 'Tap 🎤 in the composer to speak, or toggle spoken replies below.</div>')
         gr.HTML(f'<div class="pf-settings-group-title">About</div>'
                 f'<div style="font-size:.78rem;color:var(--pf-text2);line-height:1.6">'
-                f'Purple Falcon AI v4.4<br>Code execution: {"On" if RUN_CODE_ENABLED else "Off"}<br>'
+                f'Purple Falcon AI v5.0<br>Code execution: {"On" if RUN_CODE_ENABLED else "Off"}<br>'
                 f'Chat AI: {"Connected" if AI_CONFIGURED else "Not configured"}</div>')
 
     pending_file = gr.State(None)
