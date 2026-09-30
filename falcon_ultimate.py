@@ -2,7 +2,7 @@
 
 
 # ==================================================
-# 💜 PURPLE FALCON PH v4.0 — LIVE SKILLS + SELF-LEARNING + FILE ANALYST + NEWS + LOGO + IMAGE/VIDEO 🇵🇭
+# 💜 PURPLE FALCON PH v4.1 — LIVE SKILLS + SELF-LEARNING + FILE ANALYST + NEWS + LOGO + IMAGE/VIDEO 🇵🇭
 # ==================================================
 #   ✅ Live skills that learn: weather, exchange rates, world clock, Wikipedia, web search, web pages, earthquakes, dictionary,
 #      country facts, calculator — used whenever the AI model can't answer or is unreachable (falcon_skills.py)
@@ -269,7 +269,7 @@ except ImportError:
     websearch, WEB_STATUS = None, "⚠️ falcon_websearch.py not found next to this script"
 
 print("=" * 60)
-print("💜 PURPLE FALCON PH v4.0 — PROTECTED 🇵🇭")
+print("💜 PURPLE FALCON PH v4.1 — PROTECTED 🇵🇭")
 if ENV_PATH:
     print(f"   .env file:     {'✅' if not ENV_PROBLEMS else '⚠️'} {ENV_LOADED} setting(s) read")
     for _p in ENV_PROBLEMS: print(f"                  ↳ {_p}")
@@ -361,7 +361,7 @@ def build_status_bar_html():
              ("Database", "Not Connected", False)]
     parts = "".join(f'<div class="pf-status-item{" ok" if ok else ""}"><span class="dot"></span><span>{name}: {state}</span></div>'
                     for name, state, ok in items)
-    return parts + '<div class="pf-status-item"><span>Purple Falcon AI v4.0</span></div>'
+    return parts + '<div class="pf-status-item"><span>Purple Falcon AI v4.1</span></div>'
 
 def build_sidebar_nav_html():
     soon = lambda icon, label: (f'<div class="pf-nav-item disabled"><span>{icon}</span>'
@@ -3173,84 +3173,71 @@ def maybe_trace_plan(plan):
     if PF_ORCH_DEBUG:
         print('🧠 ORCHESTRATOR', {k:v for k,v in plan.items() if k != 'reasons'}, 'reasons=', plan['reasons'])
 
-_LOCAL_CAPABILITY_RE = re.compile(
-    r"\b(?:your skills|skills right now|what can you do|what are your capabilities|capabilities right now|"
-    r"available skills|features right now|what do you support|help menu|your tools|what tools)\b", re.I)
-_LOCAL_STATUS_RE = re.compile(r"\b(?:your status|system status|what is enabled|what's enabled|provider status|brain status)\b", re.I)
+# ==================================================
+# 🧭 SELF-REASONING ROUTER — classify before retrieve
+# Research basis: selective retrieval + reflection + memory-aware planning.
+# This is explicit control logic, not hidden chain-of-thought.
+# ==================================================
+_SELF_QUERY_RE = re.compile(r"\b(?:your skills|your capabilities|what can you do|what will you learn|what did you learn|your status|system status|your tools|your memory|about yourself)\b", re.I)
+_META_RE = re.compile(r"\b(?:your answer|sagot mo|not related|hindi related|wrong answer|mali|why did you|bakit.*sagot|continue|tuloy|previous|last answer)\b", re.I)
+_CURRENT_RE = re.compile(r"\b(?:latest|today|current|currently|recent|news|price|weather|version|release|schedule|202[4-9])\b", re.I)
 
-def is_local_system_question(message):
+def self_reasoning_route(message, paths=None):
     text=(message or '').strip()
-    return bool(_LOCAL_CAPABILITY_RE.search(text) or _LOCAL_STATUS_RE.search(text))
+    if paths: return {'intent':'attached-task','need_web':False,'reason':'attached input should be handled locally/provider-first'}
+    if _SELF_QUERY_RE.search(text): return {'intent':'self-system','need_web':False,'reason':'authoritative answer is local Falcon state/memory'}
+    if _META_RE.search(text): return {'intent':'conversation-meta','need_web':False,'reason':'resolve against previous conversation before any retrieval'}
+    if _CURRENT_RE.search(text) or (websearch and websearch.should_search(text)):
+        return {'intent':'external-current','need_web':True,'reason':'fresh/external evidence can improve accuracy'}
+    return {'intent':'general','need_web':False,'reason':'answer from brain/memory first; retrieve only on uncertainty'}
 
-def local_capabilities_reply(message):
-    """Answer Falcon self/capability questions locally; never search the public web for them."""
-    web_on=bool(websearch and getattr(websearch,'ENABLED',False) and PF_SAFE_WEB)
-    provider_names=[]
-    if PEEPAK_ENABLED: provider_names.append('Local Peepak/Ollama')
-    if GEMINI_API_KEY: provider_names.append('Gemini')
-    if GROQ_API_KEY: provider_names.append('Groq')
-    if OPENROUTER_API_KEY: provider_names.append('OpenRouter')
-    if HF_API_KEY: provider_names.append('Hugging Face')
-    if POLLINATIONS_API_KEY: provider_names.append('Pollinations')
-    providers=', '.join(provider_names) if provider_names else 'No AI provider currently configured/reachable'
-    return f"""🧠 **Purple Falcon capabilities right now**
+def local_self_reply(message, request=None):
+    q=(message or '').lower()
+    if 'what will you learn' in q:
+        return ("🧠 I don't independently choose a topic to learn today. I learn only through controlled inputs: "
+                "the current conversation, explicit user-approved knowledge, validated files/data, and verified web evidence when retrieval is actually needed. "
+                "I do not treat random search results or my own generated guesses as permanent knowledge. New knowledge should pass relevance, source, contradiction, and confidence checks before storage.")
+    if 'what did you learn' in q:
+        return ("🧠 I can summarize knowledge explicitly stored in Purple Falcon's local knowledge base and the current conversation. "
+                "I should not claim that a web result or generated answer became learned knowledge unless it passed the controlled knowledge-write process.")
+    provider=[]
+    if PEEPAK_ENABLED: provider.append('Local Peepak/Ollama')
+    if GEMINI_API_KEY: provider.append('Gemini')
+    if GROQ_API_KEY: provider.append('Groq')
+    if OPENROUTER_API_KEY: provider.append('OpenRouter')
+    if HF_API_KEY: provider.append('Hugging Face')
+    return ("🧠 **Purple Falcon local capability state**\n\n"
+            "Reasoning Orchestrator, conversation memory, local knowledge, safe mathematics, coding/file analysis, vision when a vision provider is available, "
+            f"and {'web research' if websearch and websearch.ENABLED else 'web research currently disabled'}.\n\n"
+            "Configured AI routes: " + (', '.join(provider) if provider else 'none currently configured/reachable') + ".")
 
-- **Conversation + reasoning:** context-aware chat and Reasoning Orchestrator.
-- **Conversation memory:** recent chat history and follow-up intent recovery.
-- **Local knowledge:** stored Purple Falcon knowledge with offline fallback.
-- **Web research:** {'enabled' if web_on else 'disabled'}; used when current/external evidence is needed, not for questions about Purple Falcon itself.
-- **Vision:** uploaded-image understanding and visual feedback when a vision-capable provider is available.
-- **Math:** safe arithmetic plus advanced quantitative/math reasoning guidance.
-- **Coding:** code explanation/debugging; local execution remains controlled by `PF_RUN_CODE`.
-- **Files/data:** attached-file reading and analysis where the installed parser/analyst supports the format.
-- **Media:** image/video generation when the configured media provider is available.
-- **Current AI routes:** {providers}.
-
-If all AI providers are unavailable, Purple Falcon should keep using conversation memory, local knowledge, deterministic tools, and context-aware web fallback instead of doing a generic web search for this capability question."""
-
-_FOLLOWUP_RE = re.compile(
-    r"\b(?:bakit|why|paano|how|ano|what|saan|where|kailan|when|sino|who|"
-    r"hindi related|not related|wrong answer|mali|ulit|again|continue|tuloy|"
-    r"ito|iyan|yan|yun|yung|iyon|that|this|it|same|previous|last answer|sagot mo|answer mo)\b", re.I)
-
-def is_conversation_followup(message):
-    text=(message or '').strip()
-    return bool(text) and (len(text.split()) <= 20 or bool(_FOLLOWUP_RE.search(text))) and bool(_FOLLOWUP_RE.search(text))
-
-def conversation_recovery_reply(message, request=None):
-    """When AI is down, never web-search a meta follow-up like 'why was your answer unrelated?'."""
-    if not is_conversation_followup(message): return None
+def conversation_subject(request=None, limit=14):
     hist=list(load_chat(request).get('messages') or [])
     if hist and hist[-1].get('role')=='user': hist=hist[:-1]
-    recent=hist[-14:]
-    if not recent: return None
-    # Find prior user intent before the complaint/follow-up, and the last assistant answer.
-    prior_users=[str(m.get('text') or '').strip() for m in recent if m.get('role')=='user' and str(m.get('text') or '').strip()]
-    assistants=[str(m.get('text') or '').strip() for m in recent if m.get('role')=='assistant' and str(m.get('text') or '').strip()]
-    if not prior_users: return None
-    prior=prior_users[-1]
-    last_answer=assistants[-1] if assistants else ''
-    return {
-        'prior_user': prior,
-        'last_answer': last_answer,
-        'context_query': (prior + ' ' + message).strip(),
-    }
+    users=[str(m.get('text') or '').strip() for m in hist[-limit:] if m.get('role')=='user' and str(m.get('text') or '').strip()]
+    return users[-1] if users else ''
 
-def web_answer_for_followup(message, request=None, use_ai=False):
-    recovery=conversation_recovery_reply(message, request)
-    if not recovery: return None
-    # Search the subject of the earlier user request, NOT complaint words such as "bakit hindi related sagot mo".
-    ans=web_answer(recovery['context_query'], request, use_ai=use_ai)
-    if not ans: return None
-    return ("Tama ka. Hindi related ang naunang fallback result sa pinag-uusapan natin. "
-            "Ginamit ko ngayon ang previous user topic bilang search context, hindi ang complaint/follow-up phrase mismo.\n\n" + ans)
+def reflected_web_answer(message, request=None, use_ai=True):
+    """Retrieve only after intent resolution, reject irrelevant evidence, then answer."""
+    route=self_reasoning_route(message)
+    if route['intent'] in ('self-system','conversation-meta') and not route['need_web']:
+        return None
+    query=message
+    prior=conversation_subject(request)
+    if len((message or '').split()) <= 14 and prior and prior.lower()!=str(message).lower():
+        query=f"{prior} | current question: {message}"
+    result=web_answer(query, request, use_ai=use_ai)
+    return result
 
 def chat_reply(message, paths, request=None):
     """→ (reply, skill keys). Never returns an error message: if the AI can't be reached, live skills answer instead."""
     tip = "" if AI_CONFIGURED else "\n\n💡 *Tip: add GROQ_API_KEY, GEMINI_API_KEY, or OPENROUTER_API_KEY to your .env file to unlock full AI conversation.*"
-    # System/self questions are authoritative local intents. Never send them to generic web search.
-    if is_local_system_question(message) and not paths:
-        return local_capabilities_reply(message), []
+    route = self_reasoning_route(message, paths)
+    if route['intent'] == 'self-system' and not paths:
+        return local_self_reply(message, request), []
+    if route['intent'] == 'conversation-meta' and not paths and not AI_CONFIGURED:
+        prior = conversation_subject(request)
+        return ("Tama. I should resolve that from our conversation, not search the complaint itself. " + (f"The previous user topic I have is: **{prior}**." if prior else "I do not have enough previous context in this session.")), []
     learn_match = should_remember_knowledge(message)
     if learn_match and not paths:
         fact = learn_match.group(1).strip()
@@ -3270,7 +3257,7 @@ def chat_reply(message, paths, request=None):
     live_ok = bool(skills) and not paths and bool(message) and not coding_request
     web_ok = bool(websearch) and websearch.ENABLED and not paths and bool(message) and not coding_request
     # 1) real-world question → look it up live first, then let the AI explain what was found
-    if live_ok and not is_local_system_question(message) and not is_conversation_followup(message) and skills.wants_live(message) and orch.get('route') != 'safe-web':
+    if live_ok and route['intent'] not in ('self-system','conversation-meta') and skills.wants_live(message) and orch.get('route') != 'safe-web':
         res = skills.research(message)
         if res.ok:
             reply = call_ai(skills.grounded_messages(message, res)) if AI_CONFIGURED else ""
@@ -3278,9 +3265,8 @@ def chat_reply(message, paths, request=None):
                 return f"{reply.strip()}\n\n{skills.sources_footer(res)}".strip(), res.keys
             return skills.compose(res, "🧠 My AI brain is resting, so here's what I found live:") + tip, res.keys
     # 1b) needs fresh / verifiable info (or the user said "search…") → answer from the live web
-    if web_ok and not is_local_system_question(message) and (orch.get('needs_web') or websearch.should_search(message)):
-        ans = (web_answer_for_followup(message, request, use_ai=AI_CONFIGURED)
-               if is_conversation_followup(message) else web_answer(message, request))
+    if web_ok and route['intent'] not in ('self-system','conversation-meta') and (route['need_web'] or orch.get('needs_web') or websearch.should_search(message)):
+        ans = web_answer(message, request)
         if ans:
             return ans, []
     # 2) ordinary conversation
@@ -3326,13 +3312,18 @@ def chat_reply(message, paths, request=None):
                            "Execution runs with the configured timeout.]\n" + execution_result)
     reply = call_ai(_ai_messages(ai_message, paths, request)) if AI_CONFIGURED else ""
     if reply == CHAT_PROVIDER_FALLBACK:
-        if web_ok:                                   # every AI provider is down → answer from the web
-            ans = (web_answer_for_followup(message, request, use_ai=False)
-                   if is_conversation_followup(message) else web_answer(message, request, use_ai=False))
-            if ans:
-                return ans, []
-        local_reply = offline_reasoning_reply(message)
-        return (local_reply or reply), []
+        if route['intent'] == 'self-system':
+            return local_self_reply(message, request), []
+        if route['intent'] == 'conversation-meta':
+            prior=conversation_subject(request)
+            return ("I should use our prior conversation here, not a generic web search. " + (f"Previous topic: **{prior}**." if prior else "No usable previous topic is stored in this session.")), []
+        local_reply = offline_reasoning_reply((conversation_subject(request)+" "+message).strip())
+        if local_reply and route['intent'] != 'external-current':
+            return local_reply, []
+        if web_ok and (route['need_web'] or PF_ORCH_WEB_VERIFY):
+            ans = reflected_web_answer(message, request, use_ai=False)
+            if ans: return ans, []
+        return (local_reply or CHAT_PROVIDER_FALLBACK), []
     if not ai_failed(reply):
         if web_ok and websearch.reply_is_unsure(reply):   # the model admits it doesn't know → check the web
             ans = web_answer(message, request)
@@ -3353,14 +3344,10 @@ def chat_reply(message, paths, request=None):
     if _SMALLTALK.match(message or ""):
         return ("Kumusta, kaibigan! 💜 My AI brain is taking a short rest, but I can still check the real world for you — try "
                 "“weather in Cebu”, “USD to PHP”, “who is …”, or tap one of the news buttons." + tip), []
-    if live_ok and not is_local_system_question(message) and not is_conversation_followup(message) and ("?" in message or _OPEN_QUESTION.match(message) or len(message.split()) <= 4):
+    if live_ok and route['intent'] not in ('self-system','conversation-meta') and ("?" in message or _OPEN_QUESTION.match(message) or len(message.split()) <= 4):
         res = skills.research(message, generic=True)
         if res.ok:
             return skills.compose(res, "🧠 My AI brain is resting, so I checked live sources for you:") + tip, res.keys
-    if web_ok and is_conversation_followup(message):
-        ans = web_answer_for_followup(message, request, use_ai=False)
-        if ans:
-            return ans, []
     local_reply = offline_reasoning_reply(message)
     if local_reply:
         return local_reply + tip, []
@@ -3599,7 +3586,7 @@ with gr.Blocks(title=TITLE, **blocks_kwargs) as demo:
                 'Tap 🎤 in the composer to speak, or toggle spoken replies below.</div>')
         gr.HTML(f'<div class="pf-settings-group-title">About</div>'
                 f'<div style="font-size:.78rem;color:var(--pf-text2);line-height:1.6">'
-                f'Purple Falcon AI v4.0<br>Code execution: {"On" if RUN_CODE_ENABLED else "Off"}<br>'
+                f'Purple Falcon AI v4.1<br>Code execution: {"On" if RUN_CODE_ENABLED else "Off"}<br>'
                 f'Chat AI: {"Connected" if AI_CONFIGURED else "Not configured"}</div>')
 
     pending_file = gr.State(None)
