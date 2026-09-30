@@ -2,7 +2,7 @@
 
 
 # ==================================================
-# 💜 PURPLE FALCON PH v4.2 — LIVE SKILLS + SELF-LEARNING + FILE ANALYST + NEWS + LOGO + IMAGE/VIDEO 🇵🇭
+# 💜 PURPLE FALCON PH v3.4 — LIVE SKILLS + SELF-LEARNING + FILE ANALYST + NEWS + LOGO + IMAGE/VIDEO 🇵🇭
 # ==================================================
 #   ✅ Live skills that learn: weather, exchange rates, world clock, Wikipedia, web search, web pages, earthquakes, dictionary,
 #      country facts, calculator — used whenever the AI model can't answer or is unreachable (falcon_skills.py)
@@ -269,7 +269,7 @@ except ImportError:
     websearch, WEB_STATUS = None, "⚠️ falcon_websearch.py not found next to this script"
 
 print("=" * 60)
-print("💜 PURPLE FALCON PH v4.2 — PROTECTED 🇵🇭")
+print("💜 PURPLE FALCON PH v3.4 — PROTECTED 🇵🇭")
 if ENV_PATH:
     print(f"   .env file:     {'✅' if not ENV_PROBLEMS else '⚠️'} {ENV_LOADED} setting(s) read")
     for _p in ENV_PROBLEMS: print(f"                  ↳ {_p}")
@@ -291,9 +291,6 @@ _ai_chain.extend(("Pollinations", "🐵 Peepak Local (final fallback)"))
 print(f"   AI chat chain: {' → '.join(_ai_chain)}")
 print(f"   Reasoning:     {'✅ structured step-by-step + self-check' if REASONING_MODE else '◻ off (PF_REASONING=0)'}")
 print(f"   Knowledge:     {len(KNOWLEDGE_LIBRARY)} topics loaded")
-
-print(f"   Conversation DB: {CHAT_DB_FILE}")
-print(f"   AI configured:   {AI_CONFIGURED}")
 print("=" * 60)
 
 # ==================================================
@@ -364,7 +361,7 @@ def build_status_bar_html():
              ("Database", "Not Connected", False)]
     parts = "".join(f'<div class="pf-status-item{" ok" if ok else ""}"><span class="dot"></span><span>{name}: {state}</span></div>'
                     for name, state, ok in items)
-    return parts + '<div class="pf-status-item"><span>Purple Falcon AI v4.2</span></div>'
+    return parts + '<div class="pf-status-item"><span>Purple Falcon AI v3.4</span></div>'
 
 def build_sidebar_nav_html():
     soon = lambda icon, label: (f'<div class="pf-nav-item disabled"><span>{icon}</span>'
@@ -2981,7 +2978,7 @@ def web_evidence_confidence(items, important=False):
 # ==================================================
 # 🧠 ANSWERING — real-world questions are checked live; if the AI model is unreachable, skills answer instead
 # ==================================================
-AI_CONFIGURED = bool(PEEPAK_ENABLED or GEMINI_API_KEY or GROQ_API_KEY or OPENROUTER_API_KEY or HF_API_KEY or POLLINATIONS_API_KEY)
+AI_CONFIGURED = True  # call_ai always attempts local Peepak before cloud providers
 _AI_FAIL_PREFIXES = ("⚠️", "😔")
 _SMALLTALK = re.compile(r"^\s*(hi|hello|hey|kumusta|kamusta|musta|good (morning|afternoon|evening|day)|yo|thanks?|thank you|salamat|ok|okay|sige|bye|paalam)\b[\s\S]{0,30}$", re.I)
 _OPEN_QUESTION = re.compile(r"^\s*(who|what|where|when|why|how|sino|ano|saan|kailan|paano|bakit|tell me about|explain)\b", re.I)
@@ -3176,52 +3173,9 @@ def maybe_trace_plan(plan):
     if PF_ORCH_DEBUG:
         print('🧠 ORCHESTRATOR', {k:v for k,v in plan.items() if k != 'reasons'}, 'reasons=', plan['reasons'])
 
-# ==================================================
-# 🧠 OFFLINE CONVERSATION/MEMORY RECOVERY
-# Prevent provider outage from becoming "I forgot everything".
-# ==================================================
-_MEMORY_SELF_RE = re.compile(r"\b(?:memory|remember|remembering|naalala|natatandaan|conversation|previous|earlier|kanina)\b", re.I)
-_META_RECOVERY_RE = re.compile(r"\b(?:ano.*nangyari|anong nangyari|what happened|bakit|why|continue|tuloy|ulit|again|sagot|answer)\b", re.I)
-
-def recent_conversation_snapshot(request=None, limit=16):
-    history=list(load_chat(request).get('messages') or [])
-    if history and history[-1].get('role')=='user': history=history[:-1]
-    out=[]
-    for m in history[-limit:]:
-        text=re.sub(r"\s+"," ",str(m.get('text') or '')).strip()
-        if text:
-            out.append({'role':m.get('role','assistant'),'text':text})
-    return out
-
-def is_memory_or_meta_question(message):
-    text=(message or '').strip()
-    return bool(_MEMORY_SELF_RE.search(text) or _META_RECOVERY_RE.search(text)) and len(text.split()) <= 24
-
-def offline_conversation_answer(message, request=None):
-    """Deterministic answer from stored session history; requires no LLM or web."""
-    snapshot=recent_conversation_snapshot(request)
-    if not snapshot:
-        return ("🧠 The AI provider is unavailable, but the memory subsystem itself is still running. "
-                "I do not have earlier usable messages in this current session to reconstruct the topic.")
-    prior_users=[m['text'] for m in snapshot if m['role']=='user']
-    prior_assist=[m['text'] for m in snapshot if m['role']=='assistant']
-    last_user=prior_users[-1] if prior_users else ''
-    last_ai=prior_assist[-1] if prior_assist else ''
-    if _MEMORY_SELF_RE.search(message or ''):
-        return ("🧠 **Memory is still available. The AI provider is what failed, not the conversation store.**\n\n"
-                + (f"**Most recent earlier user topic:** {last_user}\n\n" if last_user else '')
-                + (f"**Most recent Falcon response:** {last_ai[:900]}\n\n" if last_ai else '')
-                + "I can continue using the stored conversation while the main AI is offline. I should not replace a memory question with a generic web search.")
-    return ("🧠 The main AI provider is unavailable, but I still have the recent conversation context. "
-            + (f"The most recent earlier user topic was: **{last_user}**. " if last_user else '')
-            + "I can use that context for the next step instead of treating this as a brand-new question.")
-
 def chat_reply(message, paths, request=None):
     """→ (reply, skill keys). Never returns an error message: if the AI can't be reached, live skills answer instead."""
     tip = "" if AI_CONFIGURED else "\n\n💡 *Tip: add GROQ_API_KEY, GEMINI_API_KEY, or OPENROUTER_API_KEY to your .env file to unlock full AI conversation.*"
-    if not paths and is_memory_or_meta_question(message):
-        # This route deliberately works even when every model/API is down.
-        return offline_conversation_answer(message, request), []
     learn_match = should_remember_knowledge(message)
     if learn_match and not paths:
         fact = learn_match.group(1).strip()
@@ -3296,9 +3250,7 @@ def chat_reply(message, paths, request=None):
                            "Execution runs with the configured timeout.]\n" + execution_result)
     reply = call_ai(_ai_messages(ai_message, paths, request)) if AI_CONFIGURED else ""
     if reply == CHAT_PROVIDER_FALLBACK:
-        if is_memory_or_meta_question(message):
-            return offline_conversation_answer(message, request), []
-        if web_ok:
+        if web_ok:                                   # every AI provider is down → answer from the web
             ans = web_answer(message, request, use_ai=False)
             if ans:
                 return ans, []
@@ -3566,7 +3518,7 @@ with gr.Blocks(title=TITLE, **blocks_kwargs) as demo:
                 'Tap 🎤 in the composer to speak, or toggle spoken replies below.</div>')
         gr.HTML(f'<div class="pf-settings-group-title">About</div>'
                 f'<div style="font-size:.78rem;color:var(--pf-text2);line-height:1.6">'
-                f'Purple Falcon AI v4.2<br>Code execution: {"On" if RUN_CODE_ENABLED else "Off"}<br>'
+                f'Purple Falcon AI v3.4<br>Code execution: {"On" if RUN_CODE_ENABLED else "Off"}<br>'
                 f'Chat AI: {"Connected" if AI_CONFIGURED else "Not configured"}</div>')
 
     pending_file = gr.State(None)
