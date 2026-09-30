@@ -2,7 +2,7 @@
 
 
 # ==================================================
-# 💜 PURPLE FALCON PH v6.0.1 — LIVE SKILLS + SELF-LEARNING + FILE ANALYST + NEWS + LOGO + IMAGE/VIDEO 🇵🇭
+# 💜 PURPLE FALCON PH v6.0.2 — LIVE SKILLS + SELF-LEARNING + FILE ANALYST + NEWS + LOGO + IMAGE/VIDEO 🇵🇭
 # ==================================================
 #   ✅ Live skills that learn: weather, exchange rates, world clock, Wikipedia, web search, web pages, earthquakes, dictionary,
 #      country facts, calculator — used whenever the AI model can't answer or is unreachable (falcon_skills.py)
@@ -269,7 +269,7 @@ except ImportError:
     websearch, WEB_STATUS = None, "⚠️ falcon_websearch.py not found next to this script"
 
 print("=" * 60)
-print("💜 PURPLE FALCON PH v6.0.1 — PROTECTED 🇵🇭")
+print("💜 PURPLE FALCON PH v6.0.2 — PROTECTED 🇵🇭")
 if ENV_PATH:
     print(f"   .env file:     {'✅' if not ENV_PROBLEMS else '⚠️'} {ENV_LOADED} setting(s) read")
     for _p in ENV_PROBLEMS: print(f"                  ↳ {_p}")
@@ -361,7 +361,7 @@ def build_status_bar_html():
              ("Database", "Not Connected", False)]
     parts = "".join(f'<div class="pf-status-item{" ok" if ok else ""}"><span class="dot"></span><span>{name}: {state}</span></div>'
                     for name, state, ok in items)
-    return parts + '<div class="pf-status-item"><span>Purple Falcon AI v6.0.1</span></div>'
+    return parts + '<div class="pf-status-item"><span>Purple Falcon AI v6.0.2</span></div>'
 
 def build_sidebar_nav_html():
     soon = lambda icon, label: (f'<div class="pf-nav-item disabled"><span>{icon}</span>'
@@ -899,6 +899,13 @@ body.pf-tools-open #pf-tools-link { background: var(--pf-bg3) !important; color:
     #pf-workspace-header { padding-left: .75rem !important; padding-right: .75rem !important; }
     #pf-status-bar { gap: .6rem !important; font-size: .64rem; flex-wrap: nowrap; overflow-x: auto; justify-content: flex-start !important; padding: 0 .6rem; }
 }
+@media (max-width: 480px) {
+    #pf-composer-area { padding: .35rem .45rem calc(.5rem + env(safe-area-inset-bottom, 0px)) !important; }
+    #pf-inputbar { min-height: 48px !important; gap: .3rem !important; padding: .3rem .35rem !important; }
+    #pf-msg textarea, #pf-msg input { font-size: 16px !important; max-height: 120px !important; }
+    #pf-plus, #pf-send, #pf-mic { min-width: 38px !important; width: 38px !important; min-height: 38px !important; height: 38px !important; }
+}
+@media (pointer: coarse) { #pf-plus, #pf-send, #pf-mic { touch-action: manipulation; } }
 @media (max-height: 520px) {
     #pf-composer-area { max-height: 58dvh; padding-top: .25rem !important; padding-bottom: .35rem !important; }
     #pf-inputbar { min-height: 46px !important; padding-top: .2rem !important; padding-bottom: .2rem !important; }
@@ -1060,30 +1067,55 @@ document.addEventListener('DOMContentLoaded', function(){
 
 # ---------- paste an image straight into the message box ----------
 _PASTE_JS = """
-document.addEventListener('paste', function(e){
-    var cd = e.clipboardData || window.clipboardData;
-    if (!cd || !cd.items) return;
-    var imgFiles = [];
-    for (var i=0; i<cd.items.length; i++){
-        var it = cd.items[i];
-        if (it.kind === 'file' && it.type && it.type.indexOf('image') === 0){
-            var f = it.getAsFile();
-            if (f) imgFiles.push(f);
-        }
+(function(){
+    function pfIsComposerTarget(target){
+        if (!target || !target.closest) return false;
+        return !!target.closest('#pf-composer-area, #pf-msg');
     }
-    if (!imgFiles.length) return;   // no image on the clipboard — let normal text paste happen untouched
-    var plusInput = document.querySelector('#pf-plus input[type="file"]');
-    if (!plusInput){ console.warn('Purple Falcon: could not find the upload input to paste into'); return; }
-    var dt = new DataTransfer();
-    imgFiles.forEach(function(f, idx){
-        var ext = (f.type && f.type.indexOf('png') > -1) ? 'png' : (f.type && f.type.indexOf('gif') > -1) ? 'gif' : 'jpg';
-        dt.items.add(new File([f], 'pasted-image-' + (idx + 1) + '.' + ext, {type: f.type || 'image/png'}));
-    });
-    plusInput.files = dt.files;
-    plusInput.dispatchEvent(new Event('change', {bubbles: true}));
-    plusInput.dispatchEvent(new Event('input', {bubbles: true}));
-    e.preventDefault();
-});
+    function pfMimeExt(mime){
+        mime=(mime||'image/png').toLowerCase();
+        if (mime.indexOf('png')>=0) return 'png';
+        if (mime.indexOf('webp')>=0) return 'webp';
+        if (mime.indexOf('gif')>=0) return 'gif';
+        if (mime.indexOf('bmp')>=0) return 'bmp';
+        return 'jpg';
+    }
+    document.addEventListener('paste', function(e){
+        // Only intercept clipboard images while the user is working in the composer.
+        if (!pfIsComposerTarget(e.target) && document.activeElement && !pfIsComposerTarget(document.activeElement)) return;
+        var cd=e.clipboardData || window.clipboardData;
+        if (!cd) return;
+        var images=[];
+        if (cd.items){
+            for (var i=0;i<cd.items.length;i++){
+                var item=cd.items[i];
+                if (item.kind==='file' && /^image\//i.test(item.type||'')){
+                    var f=item.getAsFile(); if(f) images.push(f);
+                }
+            }
+        }
+        if (!images.length && cd.files){
+            for (var j=0;j<cd.files.length;j++) if(/^image\//i.test(cd.files[j].type||'')) images.push(cd.files[j]);
+        }
+        if (!images.length) return; // plain text Ctrl+V remains normal
+        var input=document.querySelector('#pf-plus input[type="file"]');
+        if(!input){ console.warn('Purple Falcon: upload input not ready'); return; }
+        var dt=new DataTransfer();
+        // Keep attachments already selected, then append pasted screenshots.
+        if(input.files){ for(var k=0;k<input.files.length;k++) dt.items.add(input.files[k]); }
+        images.forEach(function(file,idx){
+            var mime=file.type || 'image/png';
+            var name=(file.name && file.name.indexOf('.')>0) ? file.name : ('screenshot-'+Date.now()+'-'+(idx+1)+'.'+pfMimeExt(mime));
+            dt.items.add(new File([file],name,{type:mime,lastModified:Date.now()}));
+        });
+        input.files=dt.files;
+        input.dispatchEvent(new Event('input',{bubbles:true}));
+        input.dispatchEvent(new Event('change',{bubbles:true}));
+        e.preventDefault();
+        e.stopPropagation();
+        try{ setTimeout(function(){ if(window.pfFitChat) window.pfFitChat(); },80); }catch(err){}
+    }, true);
+})();
 """
 
 # ---------- app shell: sidebar collapse/mobile drawer, settings drawer, response actions ----------
@@ -3173,49 +3205,9 @@ def maybe_trace_plan(plan):
     if PF_ORCH_DEBUG:
         print('🧠 ORCHESTRATOR', {k:v for k,v in plan.items() if k != 'reasons'}, 'reasons=', plan['reasons'])
 
-# ==================================================
-# 🧠 V6.0.1 MEMORY HYGIENE
-# Keep LAST MESSAGE separate from ACTIVE TOPIC.
-# ==================================================
-_V6_ACK_RE = re.compile(r"^\s*(?:cool|nice|great|good|awesome|okay|ok|sige|salamat|thanks?|thank you|haha+|hehe+|lol|oh(?:\s+talaga)?|talaga|really|i see|gets|got it|understood|yes|yup|yep|no|nope|sure)[!?. \t]*$", re.I)
-_V6_SELF_RE = re.compile(r"\b(?:your skills|your capabilities|what can you do|what will you learn|what did you learn|your status|system status|your tools|your memory|about yourself|what is enabled)\b", re.I)
-_V6_META_RE = re.compile(r"\b(?:memory|remember|naalala|natatandaan|bakit|why|ano(?:ng)? nangyari|what happened|continue|tuloy|ulit|again|previous|last answer|sagot|answer|ito|iyan|yan|yun|yung|this|that|it)\b", re.I)
-
-def v6_topic_eligible(text):
-    text=re.sub(r"\s+"," ",(text or "")).strip()
-    if not text or _V6_ACK_RE.match(text): return False
-    if _V6_SELF_RE.search(text): return False
-    if len(text.split()) <= 24 and _V6_META_RE.search(text): return False
-    return len(text.split()) >= 3
-
-def v6_recover_active_topic(request=None, limit=40):
-    history=list(load_chat(request).get("messages") or [])
-    # stage() normally saves the current user message before chat_reply.
-    if history and history[-1].get("role") == "user": history=history[:-1]
-    for m in reversed(history[-limit:]):
-        if m.get("role") != "user": continue
-        text=str(m.get("text") or "").strip()
-        if v6_topic_eligible(text): return text[:800]
-    return ""
-
-def v6_memory_hygiene_reply(message, request=None):
-    text=(message or "").strip()
-    topic=v6_recover_active_topic(request)
-    if _V6_ACK_RE.match(text):
-        return "👍 Sige. " + (f"Tuloy natin ang **{topic}** kapag ready ka." if topic else "Ready ako sa next step mo.")
-    if _V6_SELF_RE.search(text):
-        return ("🧠 **Purple Falcon v6.0.1 capabilities:** conversation memory, memory-first intent routing, reasoning/provider routing, coding, math, vision/file analysis when available, local knowledge, validation, and selective web research. Web is a specialist tool, not the default fallback brain.")
-    if len(text.split()) <= 24 and _V6_META_RE.search(text):
-        return (f"🧠 Nasa memory pa ang context. Ang active substantive topic natin ay **{topic}**." if topic
-                else "🧠 Available ang conversation memory, pero wala pa akong substantive active topic sa current session.")
-    return None
-
 def chat_reply(message, paths, request=None):
     """→ (reply, skill keys). Never returns an error message: if the AI can't be reached, live skills answer instead."""
     tip = "" if AI_CONFIGURED else "\n\n💡 *Tip: add GROQ_API_KEY, GEMINI_API_KEY, or OPENROUTER_API_KEY to your .env file to unlock full AI conversation.*"
-    hygiene_reply = v6_memory_hygiene_reply(message, request) if not paths else None
-    if hygiene_reply is not None:
-        return hygiene_reply, []
     learn_match = should_remember_knowledge(message)
     if learn_match and not paths:
         fact = learn_match.group(1).strip()
@@ -3235,7 +3227,7 @@ def chat_reply(message, paths, request=None):
     live_ok = bool(skills) and not paths and bool(message) and not coding_request
     web_ok = bool(websearch) and websearch.ENABLED and not paths and bool(message) and not coding_request
     # 1) real-world question → look it up live first, then let the AI explain what was found
-    if live_ok and not (_V6_ACK_RE.match(message or '') or _V6_SELF_RE.search(message or '') or (len((message or '').split()) <= 24 and _V6_META_RE.search(message or ''))) and skills.wants_live(message) and orch.get('route') != 'safe-web':
+    if live_ok and skills.wants_live(message) and orch.get('route') != 'safe-web':
         res = skills.research(message)
         if res.ok:
             reply = call_ai(skills.grounded_messages(message, res)) if AI_CONFIGURED else ""
@@ -3243,7 +3235,7 @@ def chat_reply(message, paths, request=None):
                 return f"{reply.strip()}\n\n{skills.sources_footer(res)}".strip(), res.keys
             return skills.compose(res, "🧠 My AI brain is resting, so here's what I found live:") + tip, res.keys
     # 1b) needs fresh / verifiable info (or the user said "search…") → answer from the live web
-    if web_ok and not (_V6_ACK_RE.match(message or '') or _V6_SELF_RE.search(message or '') or (len((message or '').split()) <= 24 and _V6_META_RE.search(message or ''))) and (orch.get('needs_web') or websearch.should_search(message)):
+    if web_ok and (orch.get('needs_web') or websearch.should_search(message)):
         ans = web_answer(message, request)
         if ans:
             return ans, []
@@ -3302,7 +3294,7 @@ def chat_reply(message, paths, request=None):
             if ans:
                 return ans, []
         return reply, []
-    if web_ok and not (_V6_ACK_RE.match(message or '') or _V6_SELF_RE.search(message or '') or (len((message or '').split()) <= 24 and _V6_META_RE.search(message or ''))):  # memory-hygiene: protected conversation intents never become web queries
+    if web_ok:                                       # AI returned an error string → web before other fallbacks
         ans = web_answer(message, request, use_ai=False)
         if ans:
             return ans, []
@@ -3316,7 +3308,7 @@ def chat_reply(message, paths, request=None):
     if _SMALLTALK.match(message or ""):
         return ("Kumusta, kaibigan! 💜 My AI brain is taking a short rest, but I can still check the real world for you — try "
                 "“weather in Cebu”, “USD to PHP”, “who is …”, or tap one of the news buttons." + tip), []
-    if live_ok and not (_V6_ACK_RE.match(message or '') or _V6_SELF_RE.search(message or '') or (len((message or '').split()) <= 24 and _V6_META_RE.search(message or ''))) and ("?" in message or _OPEN_QUESTION.match(message) or len(message.split()) <= 4):
+    if live_ok and ("?" in message or _OPEN_QUESTION.match(message) or len(message.split()) <= 4):
         res = skills.research(message, generic=True)
         if res.ok:
             return skills.compose(res, "🧠 My AI brain is resting, so I checked live sources for you:") + tip, res.keys
@@ -3558,7 +3550,7 @@ with gr.Blocks(title=TITLE, **blocks_kwargs) as demo:
                 'Tap 🎤 in the composer to speak, or toggle spoken replies below.</div>')
         gr.HTML(f'<div class="pf-settings-group-title">About</div>'
                 f'<div style="font-size:.78rem;color:var(--pf-text2);line-height:1.6">'
-                f'Purple Falcon AI v6.0.1<br>Code execution: {"On" if RUN_CODE_ENABLED else "Off"}<br>'
+                f'Purple Falcon AI v6.0.2<br>Code execution: {"On" if RUN_CODE_ENABLED else "Off"}<br>'
                 f'Chat AI: {"Connected" if AI_CONFIGURED else "Not configured"}</div>')
 
     pending_file = gr.State(None)
