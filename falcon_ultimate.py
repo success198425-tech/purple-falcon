@@ -2,7 +2,7 @@
 
 
 # ==================================================
-# 💜 PURPLE FALCON PH v6.2 — LIVE SKILLS + SELF-LEARNING + FILE ANALYST + NEWS + LOGO + IMAGE/VIDEO 🇵🇭
+# 💜 PURPLE FALCON PH v6.2.1 — LIVE SKILLS + SELF-LEARNING + FILE ANALYST + NEWS + LOGO + IMAGE/VIDEO 🇵🇭
 # ==================================================
 #   ✅ Live skills that learn: weather, exchange rates, world clock, Wikipedia, web search, web pages, earthquakes, dictionary,
 #      country facts, calculator — used whenever the AI model can't answer or is unreachable (falcon_skills.py)
@@ -269,7 +269,7 @@ except ImportError:
     websearch, WEB_STATUS = None, "⚠️ falcon_websearch.py not found next to this script"
 
 print("=" * 60)
-print("💜 PURPLE FALCON PH v6.2 — PROTECTED 🇵🇭")
+print("💜 PURPLE FALCON PH v6.2.1 — PROTECTED 🇵🇭")
 if ENV_PATH:
     print(f"   .env file:     {'✅' if not ENV_PROBLEMS else '⚠️'} {ENV_LOADED} setting(s) read")
     for _p in ENV_PROBLEMS: print(f"                  ↳ {_p}")
@@ -361,7 +361,7 @@ def build_status_bar_html():
              ("Database", "Not Connected", False)]
     parts = "".join(f'<div class="pf-status-item{" ok" if ok else ""}"><span class="dot"></span><span>{name}: {state}</span></div>'
                     for name, state, ok in items)
-    return parts + '<div class="pf-status-item"><span>Purple Falcon AI v6.2</span></div>'
+    return parts + '<div class="pf-status-item"><span>Purple Falcon AI v6.2.1</span></div>'
 
 def build_sidebar_nav_html():
     soon = lambda icon, label: (f'<div class="pf-nav-item disabled"><span>{icon}</span>'
@@ -2809,24 +2809,48 @@ def _pick_col(cols, patterns):
     return None
 
 def _to_seconds(series):
-    import pandas as pd
+    import pandas as pd, datetime as _dt
     if pd.api.types.is_timedelta64_dtype(series): return series.dt.total_seconds()
-    if pd.api.types.is_numeric_dtype(series): return pd.to_numeric(series,errors="coerce")
-    td=pd.to_timedelta(series,errors="coerce")
-    return td.dt.total_seconds()
+    # Excel durations may arrive as datetime.time values.
+    def one(v):
+        if v is None or (isinstance(v,float) and pd.isna(v)): return float("nan")
+        if isinstance(v,_dt.timedelta): return v.total_seconds()
+        if isinstance(v,_dt.time): return v.hour*3600+v.minute*60+v.second+v.microsecond/1e6
+        if isinstance(v,(int,float)) and not isinstance(v,bool):
+            # Excel raw time fractions are less than one day; treat them as day fractions.
+            return float(v)*86400 if 0 <= float(v) < 1 else float(v)
+        try:
+            td=pd.to_timedelta(v)
+            return td.total_seconds()
+        except Exception: return float("nan")
+    return series.map(one)
 
 def deep_spreadsheet_analysis(path, out_dir=None):
     import pandas as pd, numpy as np
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        charts_enabled=True
+    except Exception as chart_import_error:
+        print(f"⚠️ Deep Analyst charts disabled: {chart_import_error}")
+        plt=None; charts_enabled=False
     ext=os.path.splitext(path)[1].lower()
     if ext in (".csv",".tsv"):
         frames={"Sheet1":pd.read_csv(path,sep="\t" if ext==".tsv" else ",")}
     else:
-        frames=pd.read_excel(path,sheet_name=None,engine="openpyxl")
+        # First verify that Render has the Excel engine. Keep the error specific instead of generic.
+        try:
+            import openpyxl  # noqa: F401
+        except ImportError as exc:
+            raise RuntimeError("DEPENDENCY: openpyxl is not installed") from exc
+        try:
+            frames=pd.read_excel(path,sheet_name=None,engine="openpyxl")
+        except Exception as exc:
+            raise RuntimeError(f"WORKBOOK_READ: {exc}") from exc
     out_dir=out_dir or os.path.join(os.path.dirname(path),"falcon_deep_analysis")
     os.makedirs(out_dir,exist_ok=True)
+    def safe_name(value): return re.sub(r"[^A-Za-z0-9_.-]+","_",str(value))[:80] or "sheet"
     all_reports=[]; chart_paths=[]
     for sheet,df in list(frames.items())[:8]:
         if df is None or df.empty:
@@ -2857,7 +2881,8 @@ def deep_spreadsheet_analysis(path, out_dir=None):
             critical=freq[freq["cum_pct"]<=80]
             n80=max(1,len(critical)+(0 if (freq["cum_pct"]==80).any() else 1))
             lines.append(f"- **Critical few:** top **{min(n80,len(freq))}** categories reach approximately 80% of occurrences.")
-            fig,ax=plt.subplots(figsize=(10,5)); top=freq.head(15); ax.bar(range(len(top)),top["count"]); ax.set_xticks(range(len(top))); ax.set_xticklabels(top["event"],rotation=60,ha="right",fontsize=8); ax.set_ylabel("Occurrences"); ax.set_title(f"{sheet}: Occurrence Pareto"); ax2=ax.twinx(); ax2.plot(range(len(top)),top["cum_pct"],marker="o"); ax2.axhline(80,color="red",linestyle="--"); ax2.set_ylabel("Cumulative %"); fig.tight_layout(); cp=os.path.join(out_dir,f"{sheet}_occurrence_pareto.png"); fig.savefig(cp,dpi=150); plt.close(fig); chart_paths.append(cp)
+            if charts_enabled:
+                fig,ax=plt.subplots(figsize=(10,5)); top=freq.head(15); ax.bar(range(len(top)),top["count"]); ax.set_xticks(range(len(top))); ax.set_xticklabels(top["event"],rotation=60,ha="right",fontsize=8); ax.set_ylabel("Occurrences"); ax.set_title(f"{sheet}: Occurrence Pareto"); ax2=ax.twinx(); ax2.plot(range(len(top)),top["cum_pct"],marker="o"); ax2.axhline(80,color="red",linestyle="--"); ax2.set_ylabel("Cumulative %"); fig.tight_layout(); cp=os.path.join(out_dir,f"{safe_name(sheet)}_occurrence_pareto.png"); fig.savefig(cp,dpi=150); plt.close(fig); chart_paths.append(cp)
             if df["__duration_s"].notna().any():
                 down=df.groupby(event,dropna=False)["__duration_s"].sum().sort_values(ascending=False).rename("seconds").reset_index(); down["pct"]=down["seconds"]/down["seconds"].sum()*100; down["cum_pct"]=down["pct"].cumsum()
                 lines.append("\n**Downtime Pareto, top 10:**")
@@ -2875,7 +2900,8 @@ def deep_spreadsheet_analysis(path, out_dir=None):
         if event and machine:
             cross=pd.crosstab(df[machine],df[event]); heat=cross.loc[cross.sum(axis=1).nlargest(10).index,cross.sum(axis=0).nlargest(12).index]
             if not heat.empty:
-                fig,ax=plt.subplots(figsize=(11,5)); im=ax.imshow(heat.values,aspect="auto"); ax.set_xticks(range(len(heat.columns))); ax.set_xticklabels(heat.columns,rotation=60,ha="right",fontsize=7); ax.set_yticks(range(len(heat.index))); ax.set_yticklabels(heat.index,fontsize=8); ax.set_title(f"{sheet}: Machine × Abnormality"); fig.colorbar(im,ax=ax,label="Occurrences"); fig.tight_layout(); hp=os.path.join(out_dir,f"{sheet}_machine_fault_heatmap.png"); fig.savefig(hp,dpi=150); plt.close(fig); chart_paths.append(hp)
+                if charts_enabled:
+                    fig,ax=plt.subplots(figsize=(11,5)); im=ax.imshow(heat.values,aspect="auto"); ax.set_xticks(range(len(heat.columns))); ax.set_xticklabels(heat.columns,rotation=60,ha="right",fontsize=7); ax.set_yticks(range(len(heat.index))); ax.set_yticklabels(heat.index,fontsize=8); ax.set_title(f"{sheet}: Machine × Abnormality"); fig.colorbar(im,ax=ax,label="Occurrences"); fig.tight_layout(); hp=os.path.join(out_dir,f"{safe_name(sheet)}_machine_fault_heatmap.png"); fig.savefig(hp,dpi=150); plt.close(fig); chart_paths.append(hp)
         all_reports.append("\n".join(lines))
     header=f"📊 **Purple Falcon Dynamic Deep Data Analysis — {os.path.basename(path)}**\n\n"
     footer=("\n\n## Falcon Interpretation\n- Pareto rankings, recurrence intervals, duration statistics, and concentration metrics above are calculated directly from the workbook.\n- High-frequency + high-downtime items should be investigated first; high-frequency + short-duration events are chronic micro-stop candidates; low-frequency + high-duration events are major-loss candidates.\n- Correlation or recurrence is an investigation lead, not proof of physical root cause. Confirm with machine, process, product/material, and method/operator evidence before corrective action.")
@@ -2886,9 +2912,15 @@ def deep_file_reply(message,paths):
     for p in [x for x in paths if is_spreadsheet_file(x)][:3]:
         try:
             report,c=deep_spreadsheet_analysis(p); blocks.append(report); charts.extend(c)
-        except ImportError as e: blocks.append(f"📊 I received **{os.path.basename(p)}**, but the Deep Data Analyst needs a missing local dependency: {e}.")
         except Exception as e:
-            print(f"⚠️ Deep Data Analyst failed for {p}: {e}"); blocks.append(f"📊 I received **{os.path.basename(p)}**, but the deterministic deep-analysis engine could not complete this workbook.")
+            print(f"⚠️ Deep Data Analyst failed for {p}: {e.__class__.__name__}: {e}")
+            msg=str(e)
+            if "DEPENDENCY:" in msg:
+                blocks.append(f"📊 **Falcon File Brain received {os.path.basename(p)}.** Deep analysis is ready, but Render is missing **openpyxl**. Add `openpyxl>=3.1.5` to `requirements.txt` and redeploy.")
+            elif "WORKBOOK_READ:" in msg:
+                blocks.append(f"📊 **Falcon File Brain received {os.path.basename(p)}**, but Excel parsing failed. The exact technical reason is logged in Render. Please verify the workbook opens normally in Excel and isn't password-protected or corrupted.")
+            else:
+                blocks.append(f"📊 **Falcon Deep Analyst received {os.path.basename(p)}**, but one deterministic analysis step failed. The exact exception is now written to Render logs instead of being hidden behind a generic error.")
     return "\n\n────────\n\n".join(blocks),charts
 
 # ==================================================
@@ -3633,7 +3665,7 @@ with gr.Blocks(title=TITLE, **blocks_kwargs) as demo:
                 'Tap 🎤 in the composer to speak, or toggle spoken replies below.</div>')
         gr.HTML(f'<div class="pf-settings-group-title">About</div>'
                 f'<div style="font-size:.78rem;color:var(--pf-text2);line-height:1.6">'
-                f'Purple Falcon AI v6.2<br>Code execution: {"On" if RUN_CODE_ENABLED else "Off"}<br>'
+                f'Purple Falcon AI v6.2.1<br>Code execution: {"On" if RUN_CODE_ENABLED else "Off"}<br>'
                 f'Chat AI: {"Connected" if AI_CONFIGURED else "Not configured"}</div>')
 
     pending_file = gr.State(None)
