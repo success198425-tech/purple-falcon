@@ -2,7 +2,7 @@
 
 
 # ==================================================
-# 💜 PURPLE FALCON PH v6.1.1 — LIVE SKILLS + SELF-LEARNING + FILE ANALYST + NEWS + LOGO + IMAGE/VIDEO 🇵🇭
+# 💜 PURPLE FALCON PH v6.1.2 — LIVE SKILLS + SELF-LEARNING + FILE ANALYST + NEWS + LOGO + IMAGE/VIDEO 🇵🇭
 # ==================================================
 #   ✅ Live skills that learn: weather, exchange rates, world clock, Wikipedia, web search, web pages, earthquakes, dictionary,
 #      country facts, calculator — used whenever the AI model can't answer or is unreachable (falcon_skills.py)
@@ -128,12 +128,6 @@ AI_CONFIGURED = bool(GROQ_API_KEY) or bool(OPENROUTER_API_KEY)
 POLLINATIONS_TEXT_MODEL = os.getenv("POLLINATIONS_TEXT_MODEL", "openai")   # chat model served by gen.pollinations.ai
 PEEPAK_MODEL = os.getenv("PEEPAK_MODEL", "peepak:latest")
 PEEPAK_ENDPOINT = os.getenv("PEEPAK_ENDPOINT", "http://127.0.0.1:11434/api/chat")
-LOCAL_FALCON_URL = os.getenv("PF_LOCAL_FALCON_URL", "").strip()
-LOCAL_FALCON_MODEL = os.getenv("PF_LOCAL_FALCON_MODEL", "tiiuae/Falcon-H1R-7B").strip()
-LOCAL_FALCON_API_KEY = os.getenv("PF_LOCAL_FALCON_API_KEY", "").strip()
-LOCAL_FALCON_ENABLED = bool(LOCAL_FALCON_URL) and os.getenv("PF_LOCAL_FALCON", "1").strip().lower() not in ("0","false","no","off")
-FALCON_PERCEPTION_URL = os.getenv("PF_FALCON_PERCEPTION_URL", "").strip()
-FALCON_PERCEPTION_ENABLED = bool(FALCON_PERCEPTION_URL) and os.getenv("PF_FALCON_PERCEPTION", "1").strip().lower() not in ("0","false","no","off")
 PEEPAK_ENABLED = os.getenv("PEEPAK_ENABLED", "0").strip().lower() not in ("0", "false", "no", "off")
 HF_CHAT_MODEL = os.getenv("HF_CHAT_MODEL", "Qwen/Qwen2.5-7B-Instruct")
 HF_CHAT_ENDPOINT = os.getenv("HF_CHAT_ENDPOINT", "https://router.huggingface.co/v1/chat/completions")
@@ -145,8 +139,8 @@ CODE_ANALYSIS_CHUNK_CHARS = 24000
 CODE_ANALYSIS_OVERLAP_CHARS = 1200
 DEFAULT_MAX_TOKENS = 2000
 CODE_MAX_TOKENS = 8000           # no artificial line/length ceiling on generated code — let the model finish it
-GROQ_VISION_MODEL = os.getenv("GROQ_VISION_MODEL", "qwen/qwen3.8-27b")
-OPENROUTER_VISION_MODEL = os.getenv("OPENROUTER_VISION_MODEL", "google/gemini-3-flash-preview")
+GROQ_VISION_MODEL = os.getenv("GROQ_VISION_MODEL", "llama-3.2-11b-vision-preview")
+OPENROUTER_VISION_MODEL = os.getenv("OPENROUTER_VISION_MODEL", "google/gemini-3.8-flash-image")
 RUN_CODE_TIMEOUT = int(os.getenv("PF_RUN_TIMEOUT", "15"))
 RUN_CODE_ENABLED = os.getenv("PF_RUN_CODE", "1").strip().lower() not in ("0", "false", "no", "off")
 
@@ -275,7 +269,7 @@ except ImportError:
     websearch, WEB_STATUS = None, "⚠️ falcon_websearch.py not found next to this script"
 
 print("=" * 60)
-print("💜 PURPLE FALCON PH v6.1.1 — PROTECTED 🇵🇭")
+print("💜 PURPLE FALCON PH v6.1.2 — PROTECTED 🇵🇭")
 if ENV_PATH:
     print(f"   .env file:     {'✅' if not ENV_PROBLEMS else '⚠️'} {ENV_LOADED} setting(s) read")
     for _p in ENV_PROBLEMS: print(f"                  ↳ {_p}")
@@ -367,7 +361,7 @@ def build_status_bar_html():
              ("Database", "Not Connected", False)]
     parts = "".join(f'<div class="pf-status-item{" ok" if ok else ""}"><span class="dot"></span><span>{name}: {state}</span></div>'
                     for name, state, ok in items)
-    return parts + '<div class="pf-status-item"><span>Purple Falcon AI v6.1.1</span></div>'
+    return parts + '<div class="pf-status-item"><span>Purple Falcon AI v6.1.2</span></div>'
 
 def build_sidebar_nav_html():
     soon = lambda icon, label: (f'<div class="pf-nav-item disabled"><span>{icon}</span>'
@@ -1065,8 +1059,31 @@ document.addEventListener('DOMContentLoaded', function(){
 """
 
 # ---------- paste an image straight into the message box ----------
-_PASTE_JS = r"""
-(function(){function inC(t){return !!(t&&t.closest&&t.closest('#pf-composer-area,#pf-msg'));}function up(){return document.querySelector('#pf-plus input[type="file"]')||Array.from(document.querySelectorAll('input[type="file"]')).find(x=>!x.disabled);}document.addEventListener('paste',function(e){if(!inC(e.target)&&!inC(document.activeElement))return;var c=e.clipboardData||window.clipboardData;if(!c)return;var fs=[];if(c.items)for(var i=0;i<c.items.length;i++){var x=c.items[i];if(x.kind==='file'&&String(x.type||'').toLowerCase().startsWith('image/')){var f=x.getAsFile();if(f)fs.push(f);}}if(!fs.length&&c.files)for(var j=0;j<c.files.length;j++)if(String(c.files[j].type||'').toLowerCase().startsWith('image/'))fs.push(c.files[j]);if(!fs.length)return;var el=up();if(!el)return;var d=new DataTransfer();if(el.files)for(var k=0;k<el.files.length;k++)d.items.add(el.files[k]);fs.forEach(f=>d.items.add(f));el.files=d.files;el.dispatchEvent(new Event('input',{bubbles:true,composed:true}));el.dispatchEvent(new Event('change',{bubbles:true,composed:true}));e.preventDefault();e.stopImmediatePropagation();},true);window.pfPasteReady=true;})();
+_PASTE_JS = """
+document.addEventListener('paste', function(e){
+    var cd = e.clipboardData || window.clipboardData;
+    if (!cd || !cd.items) return;
+    var imgFiles = [];
+    for (var i=0; i<cd.items.length; i++){
+        var it = cd.items[i];
+        if (it.kind === 'file' && it.type && it.type.indexOf('image') === 0){
+            var f = it.getAsFile();
+            if (f) imgFiles.push(f);
+        }
+    }
+    if (!imgFiles.length) return;   // no image on the clipboard — let normal text paste happen untouched
+    var plusInput = document.querySelector('#pf-plus input[type="file"]');
+    if (!plusInput){ console.warn('Purple Falcon: could not find the upload input to paste into'); return; }
+    var dt = new DataTransfer();
+    imgFiles.forEach(function(f, idx){
+        var ext = (f.type && f.type.indexOf('png') > -1) ? 'png' : (f.type && f.type.indexOf('gif') > -1) ? 'gif' : 'jpg';
+        dt.items.add(new File([f], 'pasted-image-' + (idx + 1) + '.' + ext, {type: f.type || 'image/png'}));
+    });
+    plusInput.files = dt.files;
+    plusInput.dispatchEvent(new Event('change', {bubbles: true}));
+    plusInput.dispatchEvent(new Event('input', {bubbles: true}));
+    e.preventDefault();
+});
 """
 
 # ---------- app shell: sidebar collapse/mobile drawer, settings drawer, response actions ----------
@@ -1870,10 +1887,6 @@ def call_ai(messages, temperature=0.8, max_tokens=None):
         providers.append(("OpenRouter", "https://openrouter.ai/api/v1/chat/completions",
                          {"Authorization": f"Bearer {OPENROUTER_API_KEY}",
                           "HTTP-Referer": "http://127.0.0.1:7860", "X-Title": "Purple Falcon PH"}, OPENROUTER_MODEL, 30))
-    if LOCAL_FALCON_ENABLED:
-        local_headers={"Content-Type":"application/json"}
-        if LOCAL_FALCON_API_KEY: local_headers["Authorization"] = f"Bearer {LOCAL_FALCON_API_KEY}"
-        providers.append(("Local Falcon H1R", LOCAL_FALCON_URL, local_headers, LOCAL_FALCON_MODEL, 180))
     if HF_API_KEY:
         providers.append(("Hugging Face", HF_CHAT_ENDPOINT,
                           {"Authorization": f"Bearer {HF_API_KEY}"}, HF_CHAT_MODEL, 45))
@@ -1986,72 +1999,9 @@ def build_universal_vision_question(message):
         user = "Analyze this image and give useful feedback."
     return UNIVERSAL_VISION_PROMPT + "\nUSER REQUEST:\n" + user
 
-def falcon_eyes_prompt(message):
-    user=(message or "").strip() or "Check this image."
-    return f"""You are Purple Falcon Eyes. Inspect only what the image visibly supports.
-Return concise visual evidence: scene, important objects, visible text, relevant conditions, unknowns, and a direct answer to the user's request.
-Do not invent identity, intent, emotion, hidden state, or facts not visible in the image.
-USER REQUEST: {user}"""
-
-_VISION_DENIAL_RE = re.compile(
-    r"(?:there (?:is|isn't|is not) (?:an )?image|no image (?:is )?attached|image (?:is )?not attached|"
-    r"can't (?:see|view|access) (?:the |your )?image|cannot (?:see|view|access) (?:the |your )?image|"
-    r"don't have access to (?:the |your )?image|do not have access to (?:the |your )?image|"
-    r"please (?:upload|attach|send) (?:the |an |your )?(?:image|picture)|"
-    r"could you (?:please )?(?:upload|attach|send) (?:the |an |your )?(?:image|picture))", re.I)
-
-def falcon_vision_answer_invalid(text):
-    """Evidence lock: once Eyes saw pixels, downstream text brains may not deny the image exists."""
-    return bool(text and _VISION_DENIAL_RE.search(text))
-
-def falcon_reason_over_vision(user_message, visual_evidence, history_messages):
-    """Reason over trusted Eyes evidence; reject downstream answers that contradict image availability."""
-    if not visual_evidence or not visual_evidence.strip(): return visual_evidence
-    system=(get_system_prompt() + "\n\nVISION EVIDENCE LOCK: Purple Falcon Eyes has already inspected the attached image and produced visual evidence. "
-            "The image WAS attached and WAS available to the visual subsystem. Never say that no image was attached, never ask the user to re-upload solely because you cannot see raw pixels, and never contradict the supplied visual evidence. "
-            "You are the reasoning layer. Reason from the visual evidence below and the recent conversation. If evidence is insufficient, state exactly what is unknown.")
-    prompt=(f"USER REQUEST:\n{user_message}\n\n"
-            "TRUSTED VISUAL EVIDENCE FROM PURPLE FALCON EYES:\n"
-            f"{visual_evidence}\n\n"
-            "Answer as Purple Falcon. The visual evidence above is authoritative for what Eyes observed; do not claim that the image is missing.")
-    msgs=[{"role":"system","content":system}]
-    # Keep only recent textual conversation; do not carry stale image-denial assistant messages into this synthesis.
-    for m in (history_messages or [])[-6:]:
-        if not isinstance(m,dict): continue
-        role=m.get("role")
-        content=m.get("content") or m.get("text") or ""
-        if role in ("user","assistant") and isinstance(content,str) and not falcon_vision_answer_invalid(content):
-            msgs.append({"role":role,"content":content})
-    msgs.append({"role":"user","content":prompt})
-    result=call_ai(msgs,temperature=0.45,max_tokens=1800)
-    if ai_failed(result) or falcon_vision_answer_invalid(result):
-        if result and falcon_vision_answer_invalid(result):
-            print("⚠️ Vision Evidence Lock rejected downstream image-denial answer")
-        # Trusted Eyes evidence is preferable to a hallucinated denial from a text-only reasoner.
-        return visual_evidence.strip()
-    return result.strip()
-
-def call_falcon_perception(image_paths, message):
-    """Optional HTTP adapter. Expected service contract: POST JSON {images:[data URLs], query:str} -> {text|result:str}."""
-    if not FALCON_PERCEPTION_ENABLED: return ""
-    payload_images=[encode_image_data_url(p) for p in image_paths[:3]]
-    payload_images=[x for x in payload_images if x]
-    if not payload_images: return ""
-    try:
-        r=requests.post(FALCON_PERCEPTION_URL,json={"images":payload_images,"query":message or "Describe important visible objects and text."},timeout=90)
-        if r.status_code != 200:
-            print(f"⚠️ Falcon Perception HTTP {r.status_code}: {r.text[:180]}")
-            return ""
-        data=r.json() if "json" in (r.headers.get("content-type") or "") else {"text":r.text}
-        text=data.get("text") or data.get("result") or data.get("output") or ""
-        return str(text).strip()
-    except Exception as e:
-        print(f"⚠️ Falcon Perception failed: {e}")
-        return ""
-
 def call_ai_vision(message, image_paths, history_messages, temperature=0.7, max_tokens=1500):
     """Sends up to 4 images + text to a vision-capable model. Tries Groq, then OpenRouter."""
-    content = [{"type": "text", "text": falcon_eyes_prompt(message)}]
+    content = [{"type": "text", "text": build_universal_vision_question(message)}]
     used = 0
     for p in image_paths[:4]:
         url = encode_image_data_url(p)
@@ -2082,7 +2032,7 @@ def call_ai_vision(message, image_paths, history_messages, temperature=0.7, max_
                 if isinstance(text, list):  # some providers return content blocks instead of a plain string
                     text = "".join(b.get("text", "") for b in text if isinstance(b, dict))
                 if text and text.strip():
-                    return falcon_reason_over_vision(message, text.strip(), history_messages)
+                    return text.strip()
                 print(f"⚠️ {name}: empty reply")
             elif r.status_code in (401, 402, 403):
                 print(f"⚠️ {name}: key rejected or out of credits (HTTP {r.status_code})")
@@ -2094,13 +2044,9 @@ def call_ai_vision(message, image_paths, history_messages, temperature=0.7, max_
             print(f"⚠️ {name}: timed out after {timeout}s")
         except Exception as e:
             print(f"⚠️ {name} failed: {e}")
-    perception=call_falcon_perception(image_paths,message)
-    if perception:
-        return falcon_reason_over_vision(message, perception, history_messages)
-    print("⚠️ Vision router: no visual brain returned usable evidence")
-    return ("👁️ **Purple Falcon Eyes received the image, but the inspection did not complete.** "
-            "The attachment is intact and the conversation context is still with me. I tried the available visual brains and I won't guess about details I couldn't verify. "
-            "My reasoning, coding, math, memory, and web capabilities remain available while the visual route recovers.")
+    print("⚠️ (kept out of chat) vision — no vision-capable provider answered "
+          "(check GROQ_API_KEY/OPENROUTER_API_KEY and the *_VISION_MODEL settings)")
+    return natural_fallback("vision")
 
 # ==================================================
 # 🖥️ RUN CODE — executes a code block from the chat locally (Python / Bash / Node.js)
@@ -2837,6 +2783,84 @@ def news_cli(argv):
 # 🎬 EVENT HANDLERS
 # ==================================================
 # ==================================================
+# 📊 OFFLINE SPREADSHEET FALLBACK — independent of LLM availability
+# ==================================================
+_SPREADSHEET_EXTS={".xlsx",".xlsm",".csv",".tsv"}
+
+def is_spreadsheet_file(path):
+    return bool(path) and os.path.splitext(str(path))[1].lower() in _SPREADSHEET_EXTS
+
+def local_spreadsheet_summary(path, max_cols=12):
+    """Deterministic workbook summary. No cloud AI required."""
+    ext=os.path.splitext(path)[1].lower()
+    if ext in (".xlsx",".xlsm"):
+        try:
+            import openpyxl
+        except ImportError:
+            return None, "openpyxl is not installed"
+        try:
+            wb=openpyxl.load_workbook(path, read_only=True, data_only=True, keep_vba=(ext==".xlsm"))
+        except Exception as e:
+            return None, f"workbook open failed: {e}"
+        sections=[]
+        sections.append(f"📊 **Purple Falcon Spreadsheet Summary — {os.path.basename(path)}**")
+        sections.append(f"**Sheets:** {len(wb.sheetnames)} — " + ", ".join(wb.sheetnames[:12]))
+        for ws in wb.worksheets[:8]:
+            rows=list(ws.iter_rows(values_only=True))
+            # remove fully-empty trailing/interior rows for summary purposes
+            nonempty=[r for r in rows if any(v not in (None,"") for v in r)]
+            if not nonempty:
+                sections.append(f"\n### {ws.title}\nEmpty sheet."); continue
+            header=list(nonempty[0])
+            data=nonempty[1:]
+            labels=[str(v).strip() if v not in (None,"") else f"Column {i+1}" for i,v in enumerate(header[:max_cols])]
+            numeric=[]
+            for ci,label in enumerate(labels):
+                vals=[]
+                for r in data:
+                    if ci < len(r) and isinstance(r[ci],(int,float)) and not isinstance(r[ci],bool): vals.append(float(r[ci]))
+                if vals:
+                    numeric.append((label,len(vals),sum(vals)/len(vals),min(vals),max(vals),sum(vals)))
+            sections.append(f"\n### {ws.title}\n- Data rows: **{len(data):,}**\n- Columns: **{len(header):,}**\n- Fields: " + ", ".join(labels))
+            if numeric:
+                sections.append("**Numeric highlights:**")
+                for label,n,avg,mn,mx,total in numeric[:8]:
+                    sections.append(f"- **{label}:** count {n:,}, avg {avg:,.2f}, min {mn:,.2f}, max {mx:,.2f}, total {total:,.2f}")
+            # first few non-empty data rows as a compact preview
+            preview=[]
+            for r in data[:3]:
+                vals=[str(v)[:80] if v not in (None,"") else "" for v in r[:min(max_cols,len(header))]]
+                preview.append(" | ".join(vals))
+            if preview:
+                sections.append("**First rows (preview):**\n```text\n"+"\n".join(preview)+"\n```")
+        wb.close()
+        sections.append("\n🧠 This summary was computed directly from the workbook, so it remains available even when the cloud AI brain is offline.")
+        return "\n".join(sections), None
+    # CSV/TSV
+    try:
+        import csv
+        delim="\t" if ext==".tsv" else ","
+        with open(path,"r",encoding="utf-8-sig",errors="replace",newline="") as f:
+            rows=list(csv.reader(f,delimiter=delim))
+        if not rows: return f"📊 **{os.path.basename(path)}** is empty.", None
+        return (f"📊 **Purple Falcon Spreadsheet Summary — {os.path.basename(path)}**\n"
+                f"- Data rows: **{max(0,len(rows)-1):,}**\n- Columns: **{len(rows[0]):,}**\n"
+                f"- Fields: {', '.join(rows[0][:max_cols])}\n\n"
+                "🧠 Computed locally without requiring a cloud AI provider."), None
+    except Exception as e:
+        return None, str(e)
+
+def offline_spreadsheet_reply(message, paths):
+    sheets=[p for p in paths if is_spreadsheet_file(p)]
+    if not sheets: return None
+    blocks=[]
+    for p in sheets[:3]:
+        reply,err=local_spreadsheet_summary(p)
+        if reply: blocks.append(reply)
+        else: blocks.append(f"📊 I received **{os.path.basename(p)}**, but the local spreadsheet reader could not open it ({err}).")
+    return "\n\n────────\n\n".join(blocks)
+
+# ==================================================
 # 📊 FILE ANALYSIS — glue between the chat and falcon_analyst.py
 # ==================================================
 _ANALYSIS_WORDS = re.compile(
@@ -2880,8 +2904,7 @@ def _stash_upload(path):
 
 def _analyst_ai(messages):
     reply = call_ai(messages)
-    if ai_failed(reply): raise RuntimeError("Peepak Local is unavailable")
-    return reply
+    return "" if ai_failed(reply) else reply
 
 def run_analysis(message, paths, ctx):
     """→ (chat reply, [(chart.png, title)], [downloadable files], new ctx)"""
@@ -2900,6 +2923,10 @@ def run_analysis(message, paths, ctx):
             continue
         except Exception as e:
             print(f"⚠️ (kept out of chat) analysis of {name} — {e.__class__.__name__}: {e}")
+            if is_spreadsheet_file(pth):
+                local, local_err = local_spreadsheet_summary(pth)
+                if local:
+                    replies.append(local); ctx={"path": pth, "name": name}; continue
             import traceback; traceback.print_exc()
             replies.append(f"May konting aberya ako habang sinusuri ang **{name}** 🛠️ — subukan mo ulit sandali, or try a different file format.")
             continue
@@ -3228,6 +3255,10 @@ def maybe_trace_plan(plan):
         print('🧠 ORCHESTRATOR', {k:v for k,v in plan.items() if k != 'reasons'}, 'reasons=', plan['reasons'])
 
 def chat_reply(message, paths, request=None):
+    if paths and any(is_spreadsheet_file(p) for p in paths):
+        local_sheet = offline_spreadsheet_reply(message, paths)
+        if local_sheet and not (analyst and ANALYST_READY):
+            return local_sheet, []
     """→ (reply, skill keys). Never returns an error message: if the AI can't be reached, live skills answer instead."""
     tip = "" if AI_CONFIGURED else "\n\n💡 *Tip: add GROQ_API_KEY, GEMINI_API_KEY, or OPENROUTER_API_KEY to your .env file to unlock full AI conversation.*"
     learn_match = should_remember_knowledge(message)
@@ -3416,7 +3447,9 @@ def respond(job, theme_key, ctx, request: gr.Request):
     keys = []
     media_kind = requested_media_kind(message)
 
-    if message and is_coding_request(message):
+    if paths and any(is_spreadsheet_file(p) for p in paths) and (not analyst or not ANALYST_READY):
+        reply = offline_spreadsheet_reply(message, paths) or "📊 I received the spreadsheet, but the local spreadsheet reader is unavailable."
+    elif message and is_coding_request(message):
         reply, keys = chat_reply(message, paths, request)
     elif message and not paths and media_kind == "video":
         reply, vid, img = gen_video(message, theme_key)
@@ -3572,7 +3605,7 @@ with gr.Blocks(title=TITLE, **blocks_kwargs) as demo:
                 'Tap 🎤 in the composer to speak, or toggle spoken replies below.</div>')
         gr.HTML(f'<div class="pf-settings-group-title">About</div>'
                 f'<div style="font-size:.78rem;color:var(--pf-text2);line-height:1.6">'
-                f'Purple Falcon AI v6.1.1<br>Code execution: {"On" if RUN_CODE_ENABLED else "Off"}<br>'
+                f'Purple Falcon AI v6.1.2<br>Code execution: {"On" if RUN_CODE_ENABLED else "Off"}<br>'
                 f'Chat AI: {"Connected" if AI_CONFIGURED else "Not configured"}</div>')
 
     pending_file = gr.State(None)
