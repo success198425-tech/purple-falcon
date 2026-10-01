@@ -2,7 +2,7 @@
 
 
 # ==================================================
-# 💜 PURPLE FALCON PH v6.4.1 — LIVE SKILLS + SELF-LEARNING + FILE ANALYST + NEWS + LOGO + IMAGE/VIDEO 🇵🇭
+# 💜 PURPLE FALCON PH v6.4.2 — LIVE SKILLS + SELF-LEARNING + FILE ANALYST + NEWS + LOGO + IMAGE/VIDEO 🇵🇭
 # ==================================================
 #   ✅ Live skills that learn: weather, exchange rates, world clock, Wikipedia, web search, web pages, earthquakes, dictionary,
 #      country facts, calculator — used whenever the AI model can't answer or is unreachable (falcon_skills.py)
@@ -269,7 +269,7 @@ except ImportError:
     websearch, WEB_STATUS = None, "⚠️ falcon_websearch.py not found next to this script"
 
 print("=" * 60)
-print("💜 PURPLE FALCON PH v6.4.1 — PROTECTED 🇵🇭")
+print("💜 PURPLE FALCON PH v6.4.2 — PROTECTED 🇵🇭")
 if ENV_PATH:
     print(f"   .env file:     {'✅' if not ENV_PROBLEMS else '⚠️'} {ENV_LOADED} setting(s) read")
     for _p in ENV_PROBLEMS: print(f"                  ↳ {_p}")
@@ -361,7 +361,7 @@ def build_status_bar_html():
              ("Database", "Not Connected", False)]
     parts = "".join(f'<div class="pf-status-item{" ok" if ok else ""}"><span class="dot"></span><span>{name}: {state}</span></div>'
                     for name, state, ok in items)
-    return parts + '<div class="pf-status-item"><span>Purple Falcon AI v6.4.1</span></div>'
+    return parts + '<div class="pf-status-item"><span>Purple Falcon AI v6.4.2</span></div>'
 
 def build_sidebar_nav_html():
     soon = lambda icon, label: (f'<div class="pf-nav-item disabled"><span>{icon}</span>'
@@ -1527,11 +1527,11 @@ def offline_reasoning_reply(message):
     hits = retrieve_local_knowledge(message)
     if not hits:
         return None
-    lines = ["🧠 **Purple Falcon Local Knowledge Mode** — I’m using my stored knowledge for this answer."]
+    lines = ["🧠 **Local Knowledge Mode** — AI providers are unavailable, so I am reasoning only from Purple Falcon's stored knowledge."]
     for i, item in enumerate(hits, 1):
         trust = "verified" if item.get("verified") else "stored / not independently verified"
         lines.append(f"\n**{i}. {item.get('topic','Knowledge')}** ({trust})\n{item.get('content','')[:1800]}")
-    lines.append("\n**Reasoned takeaway**\nThese are the closest stored facts to your question. I will not invent missing facts while offline. If the evidence is insufficient, try again later for fresh research, or add verified knowledge to Purple Falcon's local library.")
+    lines.append("\n**Reasoned takeaway**\nThese are the closest stored facts to your question. I will not invent missing facts while offline. If the evidence is insufficient, reconnect a live AI/research provider or add verified knowledge to the local library.")
     return "\n".join(lines)
 
 def should_remember_knowledge(message):
@@ -1562,12 +1562,6 @@ def get_system_prompt():
 When asked about who created you or your origin — answer proudly but keep details general.
 Speak naturally: English, Tagalog, Bisaya — mix freely like a real Filipino.
 Be warm, kind, and encouraging. You represent the Philippines! 🇵🇭💜
-
-🔒 PROVIDER PRIVACY:
-- You are Purple Falcon. Speak as one unified assistant, never as a wrapper around outside providers.
-- In user-facing replies, never reveal or volunteer provider/model names, model IDs, API endpoints, API keys, fallback order, HTTP status codes, quota/billing details, or internal routing diagnostics.
-- When explaining how you work, say: “I’m Purple Falcon 💜🦅. I use my own capability-routing system to choose the right reasoning, visual, file, coding, or research capability for your task. The technical configuration stays private, so you can simply focus on what you want to accomplish.”
-- If a capability fails, describe the capability naturally (for example “my visual analysis is temporarily unavailable”) instead of naming the underlying service.
 
 When the user says "make image", "generate image", "draw", etc. — create an image instead of text.
 """ + (REASONING_ADDENDUM if REASONING_MODE else "")
@@ -2191,40 +2185,6 @@ def _to_pil(data):
         raise ProviderError("returned data that isn't a valid image")
 
 # ==================================================
-# 🔒 PURPLE FALCON PROVIDER PRIVACY GUARD
-# Technical diagnostics stay in logs; chat stays Falcon-native.
-# ==================================================
-_PROVIDER_PRIVATE_RE = re.compile(
-    r"(?i)\\b(?:groq|openrouter|hugging\\s*face|gemini|google-genai|pollinations|black-forest-labs|flux(?:\\.1)?|qwen(?:[\\w./:-]*)?|falcon-h1r|"
-    r"api[_ -]?key|api endpoint|provider|model id|http\\s*[1-5][0-9]{2}|rate[- ]?limit(?:ed)?|quota|billing|credits?)\\b")
-
-def provider_private(text):
-    return bool(text and _PROVIDER_PRIVATE_RE.search(str(text)))
-
-def falconize_user_response(text, capability="general"):
-    """Remove infrastructure/provider disclosure from user-facing text. Full details remain in terminal logs."""
-    if not text: return text
-    original=str(text)
-    # Remove common '(via Provider/Model)' suffixes completely.
-    clean=re.sub(r"\\s*\\(via\\s+[^)]+\\)","",original,flags=re.I)
-    # Replace explicit powered-by/provider sentences with Falcon-owned language.
-    clean=re.sub(r"(?im)^.*\\bpowered\\s+(?:by|ako).*?(?:\\n|$)","",clean)
-    clean=re.sub(r"(?im)^.*\\b(?:groq|openrouter|hugging\\s*face|gemini|pollinations|black-forest-labs|flux(?:\\.1)?|qwen[\\w./:-]*)\\b.*?(?:\\n|$)","",clean)
-    if provider_private(clean):
-        print(f"⚠️ Provider Privacy Guard sanitized a {capability} response")
-        return {
-          "image":"🖼️ **Purple Falcon created the image.** 💜🦅",
-          "vision":"👁️ **Purple Falcon Eyes is temporarily unavailable.** I received the image context, but visual analysis could not complete. Please try again shortly.",
-          "file":"📊 **Purple Falcon File Brain is ready, but one analysis capability is temporarily unavailable.** I’ll keep the file context so the task can continue when that capability recovers.",
-          "coding":"🛠️ **Purple Falcon couldn’t complete that coding step right now.** The task and conversation context are still intact, so you can retry without starting over.",
-        }.get(capability,"💜🦅 **Purple Falcon is still here.** One internal capability is temporarily unavailable, but the conversation context is intact.")
-    return clean.strip()
-
-def falcon_self_description():
-    return ("I’m **Purple Falcon** 💜🦅. I use my own capability-routing system to choose the right reasoning, visual, file, coding, or research capability for your task. "
-            "The technical configuration stays private, so you can simply focus on what you want to accomplish. 😊")
-
-# ==================================================
 # 💬 NATURAL FALLBACK — the single place every provider-chain failure passes through.
 #    The chatter NEVER sees "API unreachable" / "HTTP 401" / stack traces — only a warm,
 #    natural reply. The real technical reason still gets printed to the terminal so the
@@ -2418,8 +2378,7 @@ def gen_image(prompt, theme_key=DEFAULT_THEME):
                            radius=14, fill=t["accent"])
     draw.text((x, y), label, font=font, fill="white")
     print(f"✅ Image ready via {used}")
-    print(f"🖼️ Image route succeeded internally: {used}")
-    return f"🖼️ **Purple Falcon created this for you:** {clean} 💜🦅", img.convert("RGB")
+    return f"🖼️ **Image created:** {clean}\n(via {used})", img.convert("RGB")
 
 # ==================================================
 # 🎬 VIDEO GENERATOR — tries each video model; if none work, makes a still image instead
@@ -3149,6 +3108,49 @@ _REASON_RE = re.compile(r'\b(?:why|diagnos|root cause|cause|compare|analy[sz]e|i
 _MACHINE_RE = re.compile(r'\b(?:machine|motor|pump|bearing|vibration|rms|fft|temperature|downtime|oee|alarm|plc|vfd|servo|maintenance)\b', re.I)
 _ACTION_RE = re.compile(r'\b(?:execute|run|delete|remove|write|modify|change|set|send|email|restart|shutdown|deploy|install|control|command)\b', re.I)
 
+# v6.4.2 protected local conversational intents
+_PF_ACK_RE = re.compile(r"^\s*(?:hi|hello|hey|cool|nice|great|okay|ok|sige|salamat|thanks?|thank you|haha+|lol|oh(?:\s+talaga)?|talaga|yes|yup|no|sure)[!?. ]*$", re.I)
+_PF_NAME_RE = re.compile(r"\b(?:ano(?:ng)? (?:ba )?(?:name|pangalan) mo|pangalan mo|what(?:'s| is) your name)\b", re.I)
+_PF_IDENTITY_RE = re.compile(r"\b(?:sino ka|who are you|ano ka)\b", re.I)
+_PF_ORIGIN_RE = re.compile(r"\b(?:paano ka (?:nag ?simula|nagsimula|ginawa)|ikaw paano ka (?:nag ?simula|nagsimula)|ikaw pano ka ba nag simula|ikaw pano kaba nag simula|saan ka galing|how did you start|how were you created|how did you begin|your origin)\b", re.I)
+_PF_PURPOSE_RE = re.compile(r"\b(?:bakit ka ginawa|ano purpose mo|ano goal mo|what is your purpose|why were you created|what is your goal)\b", re.I)
+_PF_CAP_RE = re.compile(r"\b(?:ano kaya mo|anong kaya mo|what can you do|your skills|your capabilities|capabilities mo)\b", re.I)
+_PF_HOW_RE = re.compile(r"\b(?:paano ka gumagana|how do you work|how does purple falcon work|how are you powered|what powers you|what model|which model|what provider|which provider|anong gamit mong ai)\b", re.I)
+_PF_CONTEXT_RE = re.compile(r"\b(?:remember|memory|naalala|natatandaan|kanina|previous|earlier|pinag.?uusapan|anong nangyari|what happened|continue|tuloy)\b", re.I)
+
+def falcon_local_intent(message):
+    t=(message or '').strip()
+    if _PF_ACK_RE.match(t): return 'ack'
+    if _PF_NAME_RE.search(t): return 'name'
+    if _PF_IDENTITY_RE.search(t): return 'identity'
+    if _PF_ORIGIN_RE.search(t): return 'origin'
+    if _PF_PURPOSE_RE.search(t): return 'purpose'
+    if _PF_CAP_RE.search(t): return 'capabilities'
+    if _PF_HOW_RE.search(t): return 'how'
+    if len(t.split()) <= 24 and _PF_CONTEXT_RE.search(t): return 'context'
+    return None
+
+def falcon_local_response(intent):
+    if intent=='name': return "Ako si **Purple Falcon** 💜🦅. Falcon na lang kung gusto mo. 😊"
+    if intent=='identity': return "Ako si **Purple Falcon** 💜🦅, AI assistant na kasama mo sa analysis, coding, troubleshooting, files, research, at normal na usapan. Sabihin mo lang kung ano ang gusto mong gawin natin."
+    if intent=='origin': return ("Nagsimula ako bilang isang idea na gumawa ng sariling AI assistant na mas personal, practical, at useful sa totoong tasks. 💜🦅\n\n"
+        "Habang nade-develop ako, nadagdagan ako ng kakayahan sa reasoning, coding, file at Excel analysis, visual analysis, research, memory, at reporting. "
+        "Ang goal ko ngayon ay maintindihan muna ang kailangan mo, piliin ang tamang capability, at tulungan kang matapos ang task nang maayos.\n\n"
+        "**Ako si Purple Falcon, unti-unting binubuo at pinapahusay para maging mas dependable na AI assistant.** 😊")
+    if intent=='purpose': return ("Ginawa ako para maging **practical na AI assistant**, hindi lang pang-chat. 💜🦅 Tinutulungan kitang mag-solve ng problems, mag-code, mag-analyze ng files at data, mag-troubleshoot, gumawa ng reports, at mag-research kapag kailangan. "
+        "Goal ko na maging consistent, useful, at madaling kausap habang ginagawa natin ang actual task.")
+    if intent=='capabilities': return ("Marami tayong pwedeng gawin 💜🦅: **reasoning at troubleshooting, coding, Excel/data analysis at Pareto, file/document review, visual analysis, research, memory/context, at dynamic reporting.** "
+        "Sabihin mo lang ang target mo, ako na ang pipili ng tamang capability para doon.")
+    if intent=='how': return ("Ako si **Purple Falcon** 💜🦅. May sarili akong capability-routing system na pumipili kung anong kakayahan ang pinakaangkop sa task mo, gaya ng reasoning, visual analysis, files, coding, o research. "
+        "Hindi mo kailangang isipin ang technical configuration sa likod. Sabihin mo lang kung ano ang kailangan mo, ako na ang bahalang pumili ng tamang paraan. 😊")
+    if intent=='ack': return "Sige 💜🦅. Ready ako sa next mo."
+    return None
+
+def falcon_web_allowed(message):
+    """Hard lock: local/meta conversation never becomes a web query, even after provider failure."""
+    return falcon_local_intent(message) is None
+
+
 
 def reasoning_plan(message, paths=None, coding_request=False):
     """Deterministic routing plan. The LLM reasons inside the selected lane, not about permissions."""
@@ -3215,8 +3217,11 @@ def maybe_trace_plan(plan):
         print('🧠 ORCHESTRATOR', {k:v for k,v in plan.items() if k != 'reasons'}, 'reasons=', plan['reasons'])
 
 def chat_reply(message, paths, request=None):
-    if not paths and re.search(r"\b(?:how (?:do|does) you work|how are you powered|what powers you|anong gamit mong ai|paano ka gumagana|ano ang nagpapatakbo sa iyo|what model|which model|what provider|which provider)\b", message or "", re.I):
-        return falcon_self_description(), []
+    if not paths:
+        local_intent = falcon_local_intent(message)
+        local_reply = falcon_local_response(local_intent) if local_intent else None
+        if local_reply is not None:
+            return local_reply, []
     """→ (reply, skill keys). Never returns an error message: if the AI can't be reached, live skills answer instead."""
     tip = "" if AI_CONFIGURED else "\n\n💡 *Tip: add GROQ_API_KEY, GEMINI_API_KEY, or OPENROUTER_API_KEY to your .env file to unlock full AI conversation.*"
     learn_match = should_remember_knowledge(message)
@@ -3238,15 +3243,15 @@ def chat_reply(message, paths, request=None):
     live_ok = bool(skills) and not paths and bool(message) and not coding_request
     web_ok = bool(websearch) and websearch.ENABLED and not paths and bool(message) and not coding_request
     # 1) real-world question → look it up live first, then let the AI explain what was found
-    if live_ok and skills.wants_live(message) and orch.get('route') != 'safe-web':
+    if live_ok and falcon_web_allowed(message) and skills.wants_live(message) and orch.get('route') != 'safe-web':
         res = skills.research(message)
         if res.ok:
             reply = call_ai(skills.grounded_messages(message, res)) if AI_CONFIGURED else ""
             if not ai_failed(reply):
                 return f"{reply.strip()}\n\n{skills.sources_footer(res)}".strip(), res.keys
-            return skills.compose(res, "🧠 My AI brain is resting, so here's what I found live:") + tip, res.keys
+            return skills.compose(res, "🌐 I checked available external information for this one. Here's what I found:") + tip, res.keys
     # 1b) needs fresh / verifiable info (or the user said "search…") → answer from the live web
-    if web_ok and (orch.get('needs_web') or websearch.should_search(message)):
+    if web_ok and falcon_web_allowed(message) and (orch.get('needs_web') or websearch.should_search(message)):
         ans = web_answer(message, request)
         if ans:
             return ans, []
@@ -3293,7 +3298,7 @@ def chat_reply(message, paths, request=None):
                            "Execution runs with the configured timeout.]\n" + execution_result)
     reply = call_ai(_ai_messages(ai_message, paths, request)) if AI_CONFIGURED else ""
     if reply == CHAT_PROVIDER_FALLBACK:
-        if web_ok:                                   # every AI provider is down → answer from the web
+        if web_ok and falcon_web_allowed(message):   # protected local intents never become web queries
             ans = web_answer(message, request, use_ai=False)
             if ans:
                 return ans, []
@@ -3305,28 +3310,28 @@ def chat_reply(message, paths, request=None):
             if ans:
                 return ans, []
         return reply, []
-    if web_ok:                                       # AI returned an error string → web before other fallbacks
+    if web_ok and falcon_web_allowed(message):       # protected local intents never become web queries
         ans = web_answer(message, request, use_ai=False)
         if ans:
             return ans, []
     print(f"⚠️ AI unavailable — using live skills instead ({(reply or 'no API key')[:70]})")
     if coding_request:
-        return ("🛠️ I couldn't complete the coding analysis because the required reasoning capability is temporarily unavailable. "
+        return ("🛠️ I couldn't complete the coding analysis because the configured AI provider is unavailable. "
                 "The pasted code was not treated as a media request or executed automatically." + tip), []
     if paths:
-        return ("🧠 My AI brain is resting, so I can't discuss the file right now. "
+        return ("📎 Purple Falcon received the file, but the required file-analysis capability is temporarily unavailable. "
                 + ("I can still analyse it — just say “analyze this”." if analyst else "Please try again in a moment.") + tip), []
     if _SMALLTALK.match(message or ""):
         return ("Kumusta, kaibigan! 💜 My AI brain is taking a short rest, but I can still check the real world for you — try "
                 "“weather in Cebu”, “USD to PHP”, “who is …”, or tap one of the news buttons." + tip), []
-    if live_ok and ("?" in message or _OPEN_QUESTION.match(message) or len(message.split()) <= 4):
+    if live_ok and falcon_web_allowed(message) and ("?" in message or _OPEN_QUESTION.match(message) or len(message.split()) <= 4):
         res = skills.research(message, generic=True)
         if res.ok:
-            return skills.compose(res, "🧠 My AI brain is resting, so I checked live sources for you:") + tip, res.keys
+            return skills.compose(res, "🌐 I checked available external information for this one:") + tip, res.keys
     local_reply = offline_reasoning_reply(message)
     if local_reply:
         return local_reply + tip, []
-    return (skills.friendly_fallback(message) if skills else "🧠 My AI brain is resting right now — please try again in a moment. 💜") + tip, []
+    return (skills.friendly_fallback(message) if skills else "💜🦅 Purple Falcon is still here. One internal capability is temporarily unavailable, so please try that step again in a moment.") + tip, []
 
 def last_skill_keys(request=None):
     for m in reversed(load_chat(request)["messages"]):
@@ -3561,7 +3566,7 @@ with gr.Blocks(title=TITLE, **blocks_kwargs) as demo:
                 'Tap 🎤 in the composer to speak, or toggle spoken replies below.</div>')
         gr.HTML(f'<div class="pf-settings-group-title">About</div>'
                 f'<div style="font-size:.78rem;color:var(--pf-text2);line-height:1.6">'
-                f'Purple Falcon AI v6.4.1<br>Code execution: {"On" if RUN_CODE_ENABLED else "Off"}<br>'
+                f'Purple Falcon AI v6.4.2<br>Code execution: {"On" if RUN_CODE_ENABLED else "Off"}<br>'
                 f'Chat AI: {"Connected" if AI_CONFIGURED else "Not configured"}</div>')
 
     pending_file = gr.State(None)
