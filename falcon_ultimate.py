@@ -2,7 +2,7 @@
 
 
 # ==================================================
-# 💜 PURPLE FALCON PH v6.1.2 — LIVE SKILLS + SELF-LEARNING + FILE ANALYST + NEWS + LOGO + IMAGE/VIDEO 🇵🇭
+# 💜 PURPLE FALCON PH v6.2 — LIVE SKILLS + SELF-LEARNING + FILE ANALYST + NEWS + LOGO + IMAGE/VIDEO 🇵🇭
 # ==================================================
 #   ✅ Live skills that learn: weather, exchange rates, world clock, Wikipedia, web search, web pages, earthquakes, dictionary,
 #      country facts, calculator — used whenever the AI model can't answer or is unreachable (falcon_skills.py)
@@ -269,7 +269,7 @@ except ImportError:
     websearch, WEB_STATUS = None, "⚠️ falcon_websearch.py not found next to this script"
 
 print("=" * 60)
-print("💜 PURPLE FALCON PH v6.1.2 — PROTECTED 🇵🇭")
+print("💜 PURPLE FALCON PH v6.2 — PROTECTED 🇵🇭")
 if ENV_PATH:
     print(f"   .env file:     {'✅' if not ENV_PROBLEMS else '⚠️'} {ENV_LOADED} setting(s) read")
     for _p in ENV_PROBLEMS: print(f"                  ↳ {_p}")
@@ -361,7 +361,7 @@ def build_status_bar_html():
              ("Database", "Not Connected", False)]
     parts = "".join(f'<div class="pf-status-item{" ok" if ok else ""}"><span class="dot"></span><span>{name}: {state}</span></div>'
                     for name, state, ok in items)
-    return parts + '<div class="pf-status-item"><span>Purple Falcon AI v6.1.2</span></div>'
+    return parts + '<div class="pf-status-item"><span>Purple Falcon AI v6.2</span></div>'
 
 def build_sidebar_nav_html():
     soon = lambda icon, label: (f'<div class="pf-nav-item disabled"><span>{icon}</span>'
@@ -2783,82 +2783,113 @@ def news_cli(argv):
 # 🎬 EVENT HANDLERS
 # ==================================================
 # ==================================================
-# 📊 OFFLINE SPREADSHEET FALLBACK — independent of LLM availability
+# 📈 V6.2 DYNAMIC DEEP DATA ANALYST
+# Deterministic analytics first; AI interpretation is optional.
 # ==================================================
 _SPREADSHEET_EXTS={".xlsx",".xlsm",".csv",".tsv"}
 
 def is_spreadsheet_file(path):
-    return bool(path) and os.path.splitext(str(path))[1].lower() in _SPREADSHEET_EXTS
-
-def local_spreadsheet_summary(path, max_cols=12):
-    """Deterministic workbook summary. No cloud AI required."""
-    ext=os.path.splitext(path)[1].lower()
-    if ext in (".xlsx",".xlsm"):
-        try:
-            import openpyxl
-        except ImportError:
-            return None, "openpyxl is not installed"
-        try:
-            wb=openpyxl.load_workbook(path, read_only=True, data_only=True, keep_vba=(ext==".xlsm"))
-        except Exception as e:
-            return None, f"workbook open failed: {e}"
-        sections=[]
-        sections.append(f"📊 **Purple Falcon Spreadsheet Summary — {os.path.basename(path)}**")
-        sections.append(f"**Sheets:** {len(wb.sheetnames)} — " + ", ".join(wb.sheetnames[:12]))
-        for ws in wb.worksheets[:8]:
-            rows=list(ws.iter_rows(values_only=True))
-            # remove fully-empty trailing/interior rows for summary purposes
-            nonempty=[r for r in rows if any(v not in (None,"") for v in r)]
-            if not nonempty:
-                sections.append(f"\n### {ws.title}\nEmpty sheet."); continue
-            header=list(nonempty[0])
-            data=nonempty[1:]
-            labels=[str(v).strip() if v not in (None,"") else f"Column {i+1}" for i,v in enumerate(header[:max_cols])]
-            numeric=[]
-            for ci,label in enumerate(labels):
-                vals=[]
-                for r in data:
-                    if ci < len(r) and isinstance(r[ci],(int,float)) and not isinstance(r[ci],bool): vals.append(float(r[ci]))
-                if vals:
-                    numeric.append((label,len(vals),sum(vals)/len(vals),min(vals),max(vals),sum(vals)))
-            sections.append(f"\n### {ws.title}\n- Data rows: **{len(data):,}**\n- Columns: **{len(header):,}**\n- Fields: " + ", ".join(labels))
-            if numeric:
-                sections.append("**Numeric highlights:**")
-                for label,n,avg,mn,mx,total in numeric[:8]:
-                    sections.append(f"- **{label}:** count {n:,}, avg {avg:,.2f}, min {mn:,.2f}, max {mx:,.2f}, total {total:,.2f}")
-            # first few non-empty data rows as a compact preview
-            preview=[]
-            for r in data[:3]:
-                vals=[str(v)[:80] if v not in (None,"") else "" for v in r[:min(max_cols,len(header))]]
-                preview.append(" | ".join(vals))
-            if preview:
-                sections.append("**First rows (preview):**\n```text\n"+"\n".join(preview)+"\n```")
-        wb.close()
-        sections.append("\n🧠 This summary was computed directly from the workbook, so it remains available even when the cloud AI brain is offline.")
-        return "\n".join(sections), None
-    # CSV/TSV
+    if not path or not os.path.isfile(path): return False
+    ext=os.path.splitext(str(path))[1].lower()
+    if ext in _SPREADSHEET_EXTS: return True
     try:
-        import csv
-        delim="\t" if ext==".tsv" else ","
-        with open(path,"r",encoding="utf-8-sig",errors="replace",newline="") as f:
-            rows=list(csv.reader(f,delimiter=delim))
-        if not rows: return f"📊 **{os.path.basename(path)}** is empty.", None
-        return (f"📊 **Purple Falcon Spreadsheet Summary — {os.path.basename(path)}**\n"
-                f"- Data rows: **{max(0,len(rows)-1):,}**\n- Columns: **{len(rows[0]):,}**\n"
-                f"- Fields: {', '.join(rows[0][:max_cols])}\n\n"
-                "🧠 Computed locally without requiring a cloud AI provider."), None
-    except Exception as e:
-        return None, str(e)
+        import zipfile
+        if zipfile.is_zipfile(path):
+            with zipfile.ZipFile(path) as zf: return "xl/workbook.xml" in set(zf.namelist())
+    except Exception: pass
+    return False
 
-def offline_spreadsheet_reply(message, paths):
-    sheets=[p for p in paths if is_spreadsheet_file(p)]
-    if not sheets: return None
-    blocks=[]
-    for p in sheets[:3]:
-        reply,err=local_spreadsheet_summary(p)
-        if reply: blocks.append(reply)
-        else: blocks.append(f"📊 I received **{os.path.basename(p)}**, but the local spreadsheet reader could not open it ({err}).")
-    return "\n\n────────\n\n".join(blocks)
+def _norm_col(c): return re.sub(r"[^a-z0-9]+"," ",str(c).strip().lower()).strip()
+def _pick_col(cols, patterns):
+    norm={c:_norm_col(c) for c in cols}
+    for p in patterns:
+        rx=re.compile(p,re.I)
+        for c,n in norm.items():
+            if rx.search(n): return c
+    return None
+
+def _to_seconds(series):
+    import pandas as pd
+    if pd.api.types.is_timedelta64_dtype(series): return series.dt.total_seconds()
+    if pd.api.types.is_numeric_dtype(series): return pd.to_numeric(series,errors="coerce")
+    td=pd.to_timedelta(series,errors="coerce")
+    return td.dt.total_seconds()
+
+def deep_spreadsheet_analysis(path, out_dir=None):
+    import pandas as pd, numpy as np
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    ext=os.path.splitext(path)[1].lower()
+    if ext in (".csv",".tsv"):
+        frames={"Sheet1":pd.read_csv(path,sep="\t" if ext==".tsv" else ",")}
+    else:
+        frames=pd.read_excel(path,sheet_name=None,engine="openpyxl")
+    out_dir=out_dir or os.path.join(os.path.dirname(path),"falcon_deep_analysis")
+    os.makedirs(out_dir,exist_ok=True)
+    all_reports=[]; chart_paths=[]
+    for sheet,df in list(frames.items())[:8]:
+        if df is None or df.empty:
+            all_reports.append(f"### {sheet}\nEmpty sheet."); continue
+        df=df.copy(); cols=list(df.columns)
+        start=_pick_col(cols,[r"abnormal.*start",r"start.*time",r"event.*start",r"alarm.*start"])
+        end=_pick_col(cols,[r"abnormal.*end",r"end.*time",r"event.*end",r"clear.*time"])
+        duration=_pick_col(cols,[r"abnormal.*time",r"duration",r"down.*time",r"elapsed"])
+        machine=_pick_col(cols,[r"^machine$",r"equipment",r"station",r"tool"])
+        event=_pick_col(cols,[r"abnormal.*name",r"alarm.*name",r"fault",r"error",r"event.*name",r"defect"])
+        product=_pick_col(cols,[r"product",r"model",r"part.*name",r"item"])
+        operator=_pick_col(cols,[r"operator",r"employee",r"user"])
+        lot=_pick_col(cols,[r"lot",r"batch"])
+        if start: df[start]=pd.to_datetime(df[start],errors="coerce")
+        if end: df[end]=pd.to_datetime(df[end],errors="coerce")
+        if duration: df["__duration_s"]=_to_seconds(df[duration])
+        elif start and end: df["__duration_s"]=(df[end]-df[start]).dt.total_seconds()
+        else: df["__duration_s"]=np.nan
+        lines=[f"### {sheet}",f"- Rows: **{len(df):,}** | Columns: **{len(cols):,}**",f"- Completeness: **{(1-df.isna().mean().mean())*100:.1f}%**"]
+        if start and df[start].notna().any(): lines.append(f"- Date range: **{df[start].min()} → {df[start].max()}**")
+        for label,col in [("Machines",machine),("Abnormalities",event),("Products",product),("Operators",operator),("Lots",lot)]:
+            if col: lines.append(f"- {label}: **{df[col].nunique(dropna=True):,}**")
+        if event:
+            freq=df[event].fillna("(blank)").astype(str).value_counts().rename_axis("event").reset_index(name="count")
+            freq["pct"]=freq["count"]/freq["count"].sum()*100; freq["cum_pct"]=freq["pct"].cumsum()
+            lines.append("\n**Occurrence Pareto, top 10:**")
+            for _,r in freq.head(10).iterrows(): lines.append(f"- {r['event']}: **{int(r['count'])}** ({r['pct']:.1f}%, cumulative {r['cum_pct']:.1f}%)")
+            critical=freq[freq["cum_pct"]<=80]
+            n80=max(1,len(critical)+(0 if (freq["cum_pct"]==80).any() else 1))
+            lines.append(f"- **Critical few:** top **{min(n80,len(freq))}** categories reach approximately 80% of occurrences.")
+            fig,ax=plt.subplots(figsize=(10,5)); top=freq.head(15); ax.bar(range(len(top)),top["count"]); ax.set_xticks(range(len(top))); ax.set_xticklabels(top["event"],rotation=60,ha="right",fontsize=8); ax.set_ylabel("Occurrences"); ax.set_title(f"{sheet}: Occurrence Pareto"); ax2=ax.twinx(); ax2.plot(range(len(top)),top["cum_pct"],marker="o"); ax2.axhline(80,color="red",linestyle="--"); ax2.set_ylabel("Cumulative %"); fig.tight_layout(); cp=os.path.join(out_dir,f"{sheet}_occurrence_pareto.png"); fig.savefig(cp,dpi=150); plt.close(fig); chart_paths.append(cp)
+            if df["__duration_s"].notna().any():
+                down=df.groupby(event,dropna=False)["__duration_s"].sum().sort_values(ascending=False).rename("seconds").reset_index(); down["pct"]=down["seconds"]/down["seconds"].sum()*100; down["cum_pct"]=down["pct"].cumsum()
+                lines.append("\n**Downtime Pareto, top 10:**")
+                for _,r in down.head(10).iterrows(): lines.append(f"- {r[event]}: **{r['seconds']/60:.2f} min** ({r['pct']:.1f}%, cumulative {r['cum_pct']:.1f}%)")
+                dur=df["__duration_s"].dropna(); lines.append(f"\n**Duration:** median **{dur.median():.2f}s**, mean **{dur.mean():.2f}s**, P95 **{dur.quantile(.95):.2f}s**, max **{dur.max():.2f}s**, total **{dur.sum()/60:.2f} min**")
+            if start and df[start].notna().sum()>1:
+                ordered=df[[start,event]].dropna().sort_values(start); ordered["gap_s"]=ordered.groupby(event)[start].diff().dt.total_seconds(); rec=ordered.groupby(event)["gap_s"].agg(["count","median","mean"]).sort_values("count",ascending=False)
+                lines.append("\n**Recurrence, top repeating abnormalities:**")
+                for idx,r in rec.head(8).iterrows():
+                    if r['count']>0: lines.append(f"- {idx}: **{int(r['count'])} repeats**, median interval **{r['median']/60:.1f} min**")
+        if machine:
+            mc=df[machine].fillna("(blank)").astype(str).value_counts().head(10); lines.append("\n**Machine contribution:** " + "; ".join(f"{i}: {v}" for i,v in mc.items()))
+        if start and df[start].notna().any():
+            hours=df[start].dt.hour.value_counts().sort_index(); peak=int(hours.idxmax()); lines.append(f"\n**Time concentration:** peak hour **{peak:02d}:00–{peak:02d}:59** with **{int(hours.max())}** events.")
+        if event and machine:
+            cross=pd.crosstab(df[machine],df[event]); heat=cross.loc[cross.sum(axis=1).nlargest(10).index,cross.sum(axis=0).nlargest(12).index]
+            if not heat.empty:
+                fig,ax=plt.subplots(figsize=(11,5)); im=ax.imshow(heat.values,aspect="auto"); ax.set_xticks(range(len(heat.columns))); ax.set_xticklabels(heat.columns,rotation=60,ha="right",fontsize=7); ax.set_yticks(range(len(heat.index))); ax.set_yticklabels(heat.index,fontsize=8); ax.set_title(f"{sheet}: Machine × Abnormality"); fig.colorbar(im,ax=ax,label="Occurrences"); fig.tight_layout(); hp=os.path.join(out_dir,f"{sheet}_machine_fault_heatmap.png"); fig.savefig(hp,dpi=150); plt.close(fig); chart_paths.append(hp)
+        all_reports.append("\n".join(lines))
+    header=f"📊 **Purple Falcon Dynamic Deep Data Analysis — {os.path.basename(path)}**\n\n"
+    footer=("\n\n## Falcon Interpretation\n- Pareto rankings, recurrence intervals, duration statistics, and concentration metrics above are calculated directly from the workbook.\n- High-frequency + high-downtime items should be investigated first; high-frequency + short-duration events are chronic micro-stop candidates; low-frequency + high-duration events are major-loss candidates.\n- Correlation or recurrence is an investigation lead, not proof of physical root cause. Confirm with machine, process, product/material, and method/operator evidence before corrective action.")
+    return header+"\n\n".join(all_reports)+footer, chart_paths
+
+def deep_file_reply(message,paths):
+    blocks=[]; charts=[]
+    for p in [x for x in paths if is_spreadsheet_file(x)][:3]:
+        try:
+            report,c=deep_spreadsheet_analysis(p); blocks.append(report); charts.extend(c)
+        except ImportError as e: blocks.append(f"📊 I received **{os.path.basename(p)}**, but the Deep Data Analyst needs a missing local dependency: {e}.")
+        except Exception as e:
+            print(f"⚠️ Deep Data Analyst failed for {p}: {e}"); blocks.append(f"📊 I received **{os.path.basename(p)}**, but the deterministic deep-analysis engine could not complete this workbook.")
+    return "\n\n────────\n\n".join(blocks),charts
 
 # ==================================================
 # 📊 FILE ANALYSIS — glue between the chat and falcon_analyst.py
@@ -2904,7 +2935,8 @@ def _stash_upload(path):
 
 def _analyst_ai(messages):
     reply = call_ai(messages)
-    return "" if ai_failed(reply) else reply
+    if ai_failed(reply): raise RuntimeError("Peepak Local is unavailable")
+    return reply
 
 def run_analysis(message, paths, ctx):
     """→ (chat reply, [(chart.png, title)], [downloadable files], new ctx)"""
@@ -2923,10 +2955,6 @@ def run_analysis(message, paths, ctx):
             continue
         except Exception as e:
             print(f"⚠️ (kept out of chat) analysis of {name} — {e.__class__.__name__}: {e}")
-            if is_spreadsheet_file(pth):
-                local, local_err = local_spreadsheet_summary(pth)
-                if local:
-                    replies.append(local); ctx={"path": pth, "name": name}; continue
             import traceback; traceback.print_exc()
             replies.append(f"May konting aberya ako habang sinusuri ang **{name}** 🛠️ — subukan mo ulit sandali, or try a different file format.")
             continue
@@ -3256,9 +3284,8 @@ def maybe_trace_plan(plan):
 
 def chat_reply(message, paths, request=None):
     if paths and any(is_spreadsheet_file(p) for p in paths):
-        local_sheet = offline_spreadsheet_reply(message, paths)
-        if local_sheet and not (analyst and ANALYST_READY):
-            return local_sheet, []
+        deep_reply, _charts = deep_file_reply(message, paths)
+        if deep_reply: return deep_reply, []
     """→ (reply, skill keys). Never returns an error message: if the AI can't be reached, live skills answer instead."""
     tip = "" if AI_CONFIGURED else "\n\n💡 *Tip: add GROQ_API_KEY, GEMINI_API_KEY, or OPENROUTER_API_KEY to your .env file to unlock full AI conversation.*"
     learn_match = should_remember_knowledge(message)
@@ -3447,8 +3474,9 @@ def respond(job, theme_key, ctx, request: gr.Request):
     keys = []
     media_kind = requested_media_kind(message)
 
-    if paths and any(is_spreadsheet_file(p) for p in paths) and (not analyst or not ANALYST_READY):
-        reply = offline_spreadsheet_reply(message, paths) or "📊 I received the spreadsheet, but the local spreadsheet reader is unavailable."
+    if paths and any(is_spreadsheet_file(p) for p in paths):
+        reply, deep_charts = deep_file_reply(message, paths)
+        charts = [(c, os.path.basename(c)) for c in deep_charts] if deep_charts else None
     elif message and is_coding_request(message):
         reply, keys = chat_reply(message, paths, request)
     elif message and not paths and media_kind == "video":
@@ -3605,7 +3633,7 @@ with gr.Blocks(title=TITLE, **blocks_kwargs) as demo:
                 'Tap 🎤 in the composer to speak, or toggle spoken replies below.</div>')
         gr.HTML(f'<div class="pf-settings-group-title">About</div>'
                 f'<div style="font-size:.78rem;color:var(--pf-text2);line-height:1.6">'
-                f'Purple Falcon AI v6.1.2<br>Code execution: {"On" if RUN_CODE_ENABLED else "Off"}<br>'
+                f'Purple Falcon AI v6.2<br>Code execution: {"On" if RUN_CODE_ENABLED else "Off"}<br>'
                 f'Chat AI: {"Connected" if AI_CONFIGURED else "Not configured"}</div>')
 
     pending_file = gr.State(None)
