@@ -2,7 +2,7 @@
 
 
 # ==================================================
-# 💜 PURPLE FALCON PH v6.7.0 — LIVE SKILLS + SELF-LEARNING + FILE ANALYST + NEWS + LOGO + IMAGE/VIDEO 🇵🇭
+# 💜 PURPLE FALCON PH v6.7.6 — LIVE SKILLS + SELF-LEARNING + FILE ANALYST + NEWS + LOGO + IMAGE/VIDEO 🇵🇭
 # ==================================================
 #   ✅ Live skills that learn: weather, exchange rates, world clock, Wikipedia, web search, web pages, earthquakes, dictionary,
 #      country facts, calculator — used whenever the AI model can't answer or is unreachable (falcon_skills.py)
@@ -269,7 +269,7 @@ except ImportError:
     websearch, WEB_STATUS = None, "⚠️ falcon_websearch.py not found next to this script"
 
 print("=" * 60)
-print("💜 PURPLE FALCON PH v6.7.0 — PROTECTED 🇵🇭")
+print("💜 PURPLE FALCON PH v6.7.6 — PROTECTED 🇵🇭")
 if ENV_PATH:
     print(f"   .env file:     {'✅' if not ENV_PROBLEMS else '⚠️'} {ENV_LOADED} setting(s) read")
     for _p in ENV_PROBLEMS: print(f"                  ↳ {_p}")
@@ -361,7 +361,7 @@ def build_status_bar_html():
              ("Database", "Not Connected", False)]
     parts = "".join(f'<div class="pf-status-item{" ok" if ok else ""}"><span class="dot"></span><span>{name}: {state}</span></div>'
                     for name, state, ok in items)
-    return parts + '<div class="pf-status-item"><span>Purple Falcon AI v6.7.0</span></div>'
+    return parts + '<div class="pf-status-item"><span>Purple Falcon AI v6.7.6</span></div>'
 
 def build_sidebar_nav_html():
     soon = lambda icon, label: (f'<div class="pf-nav-item disabled"><span>{icon}</span>'
@@ -427,7 +427,7 @@ except Exception as _e:
     print(f"⚠️ Couldn't prepare chat avatar: {_e}")
 
 # ==================================================
-# SETTINGS LOCALIZATION v6.7.0
+# SETTINGS LOCALIZATION v6.7.6
 # ==================================================
 SETTINGS_LANGUAGES=[('English','en'),('Filipino / Tagalog','tl'),('Cebuano / Bisaya','ceb'),('Malay','ms'),('Indonesian','id'),('Spanish','es'),('French','fr'),('German','de'),('Portuguese','pt'),('Italian','it'),('Japanese / 日本語','ja'),('Korean / 한국어','ko')]
 SETTINGS_I18N={
@@ -457,10 +457,110 @@ UI_I18N={
 'it':{'new_chat':'Nuova Chat','workspace':'Area di lavoro','recent':'Recenti','soon':'Prossimamente','copy':'Copia','read':'Leggi ad alta voce','helpful':'Utile','not_helpful':'Non utile','insights':'Approfondimenti AI','run':'Esegui','running':'Esecuzione…','ready':'Pronto','offline':'Offline','not_connected':'Non connesso','knowledge':'Base di conoscenza','database':'Database','tools':'Strumenti','attach':'Allega file','clear':'Cancella','send':'Invia','stop':'Ferma','download':'Scarica','save':'Salva','reset':'Reimposta','close':'Chiudi','processing':'Elaborazione','uploading':'Caricamento','analyzing':'Analisi','generating':'Generazione','verifying':'Verifica'},
 'ja':{'new_chat':'新しいチャット','workspace':'ワークスペース','recent':'最近','soon':'近日公開','copy':'コピー','read':'読み上げ','helpful':'役に立った','not_helpful':'役に立たなかった','insights':'AI インサイト','run':'実行','running':'実行中…','ready':'準備完了','offline':'オフライン','not_connected':'未接続','knowledge':'ナレッジベース','database':'データベース','tools':'ツール','attach':'ファイルを添付','clear':'クリア','send':'送信','stop':'停止','download':'ダウンロード','save':'保存','reset':'リセット','close':'閉じる','processing':'処理中','uploading':'アップロード中','analyzing':'分析中','generating':'生成中','verifying':'確認中'},
 'ko':{'new_chat':'새 채팅','workspace':'작업 공간','recent':'최근','soon':'곧 제공','copy':'복사','read':'소리내어 읽기','helpful':'도움됨','not_helpful':'도움 안 됨','insights':'AI 인사이트','run':'실행','running':'실행 중…','ready':'준비됨','offline':'오프라인','not_connected':'연결 안 됨','knowledge':'지식 베이스','database':'데이터베이스','tools':'도구','attach':'파일 첨부','clear':'지우기','send':'보내기','stop':'중지','download':'다운로드','save':'저장','reset':'재설정','close':'닫기','processing':'처리 중','uploading':'업로드 중','analyzing':'분석 중','generating':'생성 중','verifying':'확인 중'}}
+# v6.7.6 dark-mode accessibility checks
+# WCAG-style relative luminance / contrast helpers for deterministic theme checks.
+def _a11y_hex_rgb(value):
+    v=str(value or '').strip().lstrip('#')
+    if len(v)==3: v=''.join(c*2 for c in v)
+    if len(v)!=6: raise ValueError('expected hex color')
+    return tuple(int(v[i:i+2],16)/255.0 for i in (0,2,4))
+
+def _a11y_luminance(value):
+    rgb=_a11y_hex_rgb(value)
+    lin=[c/12.92 if c<=0.04045 else ((c+0.055)/1.055)**2.4 for c in rgb]
+    return 0.2126*lin[0]+0.7152*lin[1]+0.0722*lin[2]
+
+def _a11y_contrast(fg,bg):
+    a,b=_a11y_luminance(fg),_a11y_luminance(bg); hi,lo=max(a,b),min(a,b)
+    return (hi+0.05)/(lo+0.05)
+
+def run_dark_mobile_accessibility_checks():
+    failures=[]; checks=[]
+    # Deterministic representative colors used by the mobile dark treatment.
+    pairs=[
+      ('primary_text','#f5f3ff','#17131f',4.5),
+      ('secondary_text','#c8c2d6','#17131f',4.5),
+      ('healthy_status','#4ade80','#17131f',4.5),
+      ('muted_status','#b8b1c7','#211b2b',4.5),
+      ('border','#8b819a','#211b2b',3.0),
+    ]
+    for name,fg,bg,minimum in pairs:
+        ratio=_a11y_contrast(fg,bg); ok=ratio>=minimum
+        checks.append({'name':name,'ratio':round(ratio,2),'minimum':minimum,'passed':ok})
+        if not ok: failures.append((name,round(ratio,2),minimum))
+    # Structural/mobile accessibility invariants.
+    css=CSS
+    invariants={
+      'touch_targets':'min-height: 44px' in css,
+      'safe_area':'env(safe-area-inset-bottom)' in css,
+      'focus_visible':':focus-visible' in css,
+      'reduced_motion':'prefers-reduced-motion: reduce' in css,
+      'dark_color_scheme':'color-scheme: dark' in css,
+      'status_not_color_only':'pf-settings-status-row' in css,
+    }
+    for name,ok in invariants.items():
+        if not ok: failures.append((name,'missing','required'))
+    return {'passed':not failures,'failures':failures,'contrast_checks':checks,'invariants':invariants}
+
+def run_keyboard_navigation_checks():
+    """Static regression for keyboard-only navigation of the Settings dialog."""
+    source=globals().get('__file__','')
+    try: text=open(source,'r',encoding='utf-8').read() if source else ''
+    except Exception: text=''
+    required={
+      'dialog_focusable':"setAttribute('tabindex','-1')" in text,
+      'focusables_query':'function pfSettingsFocusables' in text,
+      'focus_trap':'document.activeElement===last' in text and 'document.activeElement===first' in text,
+      'shift_tab':'e.shiftKey' in text,
+      'escape_close':"e.key==='Escape'" in text and 'pfCloseSettings()' in text,
+      'initial_focus':'(items[0]||panel).focus()' in text,
+      'return_focus':'pfSettingsReturnFocus.focus()' in text,
+      'keydown_listener':"addEventListener('keydown',pfSettingsKeydown)" in text,
+      'visible_focus':':focus-visible' in text,
+      'close_button':'pf-settings-close' in text,
+      'combobox_keyboard':'role=\\"combobox\\"' in text or '[role="combobox"]' in text,
+    }
+    failures=[k for k,v in required.items() if not v]
+    return {'passed':not failures,'failures':failures,'checks':required,'count':len(required)}
+
+def run_screen_reader_accessibility_checks():
+    """Static regression for semantics required by common screen readers."""
+    source=globals().get('__file__','')
+    try: text=open(source,'r',encoding='utf-8').read() if source else ''
+    except Exception: text=''
+    required={
+      'settings_dialog':"setAttribute('role','dialog')" in text,
+      'aria_modal':"setAttribute('aria-modal','true')" in text,
+      'close_name':"setAttribute('aria-label','Close settings')" in text,
+      'language_name':"setAttribute('aria-label','Settings language')" in text,
+      'theme_name':"setAttribute('aria-label','Theme')" in text,
+      'status_region':'role=\\"region\\"' in text or 'role="region"' in text,
+      'status_live':'aria-live=\\"polite\\"' in text or 'aria-live="polite"' in text,
+      'decorative_dot_hidden':'aria-hidden=\\"true\\"' in text or 'aria-hidden="true"' in text,
+      'status_has_text':'aria-label=\\"{name}: {state}\\"' in text or 'aria-label="{name}: {state}"' in text,
+      'heading_semantics':'aria-level=\\"2\\"' in text or 'aria-level="2"' in text,
+      'open_state':"setAttribute('aria-hidden', open ? 'false' : 'true')" in text,
+    }
+    failures=[k for k,v in required.items() if not v]
+    return {'passed':not failures,'failures':failures,'checks':required,'count':len(required)}
+
+SYSTEM_STATUS_I18N={
+'en':'System Status','tl':'Status ng Sistema','ceb':'Status sa Sistema','ms':'Status Sistem','id':'Status Sistem','es':'Estado del sistema','fr':'État du système','de':'Systemstatus','pt':'Status do sistema','it':'Stato del sistema','ja':'システム状態','ko':'시스템 상태'}
+
+def localized_system_status_html(lang='en'):
+    t=UI_I18N.get(lang,UI_I18N['en']); title=SYSTEM_STATUS_I18N.get(lang,SYSTEM_STATUS_I18N['en'])
+    ai_state=t['ready'] if AI_CONFIGURED else t['offline']; ai_ok=AI_CONFIGURED
+    kb_state=t['not_connected']; db_state=t['not_connected']
+    def row(name,state,ok=False):
+        cls=' pf-settings-status-ok' if ok else ''
+        return f'<div class="pf-settings-status-row{cls}" role="status" aria-label="{name}: {state}"><span class="pf-settings-status-dot" aria-hidden="true"></span><span>{name}</span><strong>{state}</strong></div>'
+    return (f'<div class="pf-settings-group-title" id="pf-system-status-title">{title}</div><div class="pf-settings-status" role="region" aria-labelledby="pf-system-status-title" aria-live="polite" aria-atomic="false">'
+            +row('AI',ai_state,ai_ok)+row(t['knowledge'],kb_state,False)+row(t['database'],db_state,False)+'</div>')
+
 def localized_settings_html(lang='en'):
-    x=SETTINGS_I18N.get(lang,SETTINGS_I18N['en']);return f'<div class="pf-settings-title">{x[0]}</div><div class="pf-settings-group-title">{x[2]}</div>'
+    x=SETTINGS_I18N.get(lang,SETTINGS_I18N['en']);return f'<div class="pf-settings-title" role="heading" aria-level="2">{x[0]}</div><div class="pf-settings-group-title">{x[2]}</div>'
 def localized_settings_detail_html(lang='en'):
-    x=SETTINGS_I18N.get(lang,SETTINGS_I18N['en']);status=x[7] if AI_CONFIGURED else x[8];on='On' if RUN_CODE_ENABLED else 'Off';return f'<div class="pf-settings-group-title">{x[4]}</div><div style="font-size:.78rem;color:var(--pf-text2)">🎤</div><div class="pf-settings-group-title">{x[5]}</div><div style="font-size:.78rem;color:var(--pf-text2);line-height:1.6">Purple Falcon AI v6.7.0<br>{x[6]}: {on}<br>Chat AI: {status}</div>'
+    x=SETTINGS_I18N.get(lang,SETTINGS_I18N['en']);status=x[7] if AI_CONFIGURED else x[8];on='On' if RUN_CODE_ENABLED else 'Off';return f'<div class="pf-settings-group-title">{x[4]}</div><div style="font-size:.78rem;color:var(--pf-text2)">🎤</div><div class="pf-settings-group-title">{x[5]}</div><div style="font-size:.78rem;color:var(--pf-text2);line-height:1.6">Purple Falcon AI v6.7.6<br>{x[6]}: {on}</div>'
 
 
 def localized_action_updates(lang='en'):
@@ -545,7 +645,7 @@ def theme_vars(t):
 STATIC_CSS = """
 :root {
     --pf-header-h: clamp(62.4px, 8.4vh, 76.8px); --pf-sidebar-w: clamp(220px, 21vw, 300px); --pf-sidebar-collapsed: clamp(56px, 5vw, 68px);
-    --pf-workspace-header-h: clamp(48px, 6.5vh, 60px); --pf-status-h: clamp(26px, 3.5vh, 32px); --pf-max-app-w: 100vw;
+    --pf-workspace-header-h: clamp(48px, 6.5vh, 60px); --pf-status-h: 0px; --pf-max-app-w: 100vw;
     --pf-conv-max-w: 1000px; --pf-ai-normal-max-w: 850px; --pf-ai-analysis-max-w: 960px;
     --pf-user-max-w: 680px; --pf-prompt-max-w: 1000px; --pf-gap: clamp(8px, 1.2vw, 16px);
     --pf-radius-card: 12px; --pf-radius-panel: 16px;
@@ -916,6 +1016,12 @@ body.pf-tools-open #pf-tools-link { background: var(--pf-bg3) !important; color:
 #pf-settings-close { background: transparent !important; border: none !important; color: var(--pf-text2) !important; font-size: 1.1rem !important; width: 32px !important; min-width: 32px !important; padding: 0 !important; }
 .pf-settings-group-title { font-size: .7rem; text-transform: uppercase; letter-spacing: .05em; color: var(--pf-muted); margin: 1rem 0 .4rem; }
 .pf-settings-group-title:first-of-type { margin-top: 0; }
+.pf-settings-status { display:flex; flex-direction:column; gap:.5rem; padding:.65rem .75rem; border:1px solid var(--pf-border); border-radius:10px; background:var(--pf-bg3); }
+.pf-settings-status-row { display:grid; grid-template-columns:10px 1fr auto; align-items:center; gap:.45rem; font-size:.76rem; color:var(--pf-text2); }
+.pf-settings-status-row strong { font-size:.72rem; color:var(--pf-muted); font-weight:600; }
+.pf-settings-status-dot { width:7px; height:7px; border-radius:50%; background:#6b7280; }
+.pf-settings-status-ok .pf-settings-status-dot { background:#22c55e; }
+.pf-settings-status-ok strong { color:#22c55e; }
 
 @media (max-width: 1023px) {
     .pf-header-left { padding-right: 116px; }
@@ -926,6 +1032,36 @@ body.pf-tools-open #pf-tools-link { background: var(--pf-bg3) !important; color:
     body.pf-sidebar-collapsed .pf-nav-label, body.pf-sidebar-collapsed .pf-nav-section-title, body.pf-sidebar-collapsed .pf-recent-list { display: block !important; }
 }
 @media (max-width: 640px) {
+    /* v6.7.6: touch-friendly bottom sheet plus explicit dark-theme mobile treatment */
+    #pf-settings-overlay { background: rgba(0,0,0,.52); backdrop-filter: blur(2px); }
+    #pf-settings-panel {
+        top: auto; right: 0; bottom: 0; left: 0;
+        width: 100vw; max-width: 100vw;
+        height: min(86dvh, 720px); max-height: 86dvh;
+        border-left: 0; border-top: 1px solid var(--pf-border);
+        border-radius: 18px 18px 0 0;
+        box-shadow: 0 -12px 32px rgba(0,0,0,.38);
+        transform: translateY(100%);
+        padding: .85rem 1rem calc(1rem + env(safe-area-inset-bottom)) !important;
+        overscroll-behavior: contain;
+        -webkit-overflow-scrolling: touch;
+    }
+    #pf-settings-panel.pf-open { transform: translateY(0); }
+    #pf-settings-panel .pf-settings-title { position: sticky; top: 0; z-index: 2; margin: -.25rem 0 .65rem; padding: .45rem 0 .6rem; background: var(--pf-bg2); }
+    #pf-settings-close { width: 44px !important; min-width: 44px !important; height: 44px !important; min-height: 44px !important; }
+    #pf-settings-panel .form, #pf-settings-panel .wrap { min-width: 0 !important; }
+    #pf-settings-panel input, #pf-settings-panel button, #pf-settings-panel [role="button"] { min-height: 44px; }
+    .pf-settings-group-title { margin-top: .85rem; }
+    .pf-settings-status { gap: .65rem; padding: .75rem; }
+    .pf-settings-status-row {
+        grid-template-columns: 10px minmax(0,1fr);
+        grid-template-areas: "dot label" ". state";
+        column-gap: .5rem; row-gap: .12rem;
+        font-size: .8rem;
+    }
+    .pf-settings-status-dot { grid-area: dot; }
+    .pf-settings-status-row > span:not(.pf-settings-status-dot) { grid-area: label; min-width: 0; overflow-wrap: anywhere; }
+    .pf-settings-status-row strong { grid-area: state; justify-self: start; font-size: .74rem; overflow-wrap: anywhere; }
     #pf-app-header { padding: 0 .75rem !important; }
     .pf-header-title { font-size: .92rem; }
     #pf-chat-scroll { padding: .5rem .75rem 0 !important; }
@@ -938,6 +1074,54 @@ body.pf-tools-open #pf-tools-link { background: var(--pf-bg3) !important; color:
     .pf-code-toolbar { font-size: .68rem; }
     #pf-workspace-header { padding-left: .75rem !important; padding-right: .75rem !important; }
     #pf-status-bar { gap: .6rem !important; font-size: .64rem; flex-wrap: nowrap; overflow-x: auto; justify-content: flex-start !important; padding: 0 .6rem; }
+}
+/* v6.7.6 dark-mode mobile settings */
+@media (max-width: 640px) {
+    :root[data-pf-theme="purple"], :root[data-pf-theme="sunset"], :root[data-pf-theme="ocean"], :root[data-pf-theme="emerald"] { color-scheme: dark; }
+    :root[data-pf-theme="purple"] #pf-settings-panel, :root[data-pf-theme="sunset"] #pf-settings-panel, :root[data-pf-theme="ocean"] #pf-settings-panel, :root[data-pf-theme="emerald"] #pf-settings-panel {
+        background: color-mix(in srgb, var(--pf-bg2) 94%, #000 6%) !important; border-top-color: color-mix(in srgb, var(--pf-border) 72%, #fff 28%); box-shadow: 0 -16px 42px rgba(0,0,0,.62);
+    }
+    :root[data-pf-theme="purple"] #pf-settings-overlay, :root[data-pf-theme="sunset"] #pf-settings-overlay, :root[data-pf-theme="ocean"] #pf-settings-overlay, :root[data-pf-theme="emerald"] #pf-settings-overlay { background: rgba(0,0,0,.68); backdrop-filter: blur(3px) saturate(.85); }
+    :root[data-pf-theme="purple"] #pf-settings-panel .pf-settings-title, :root[data-pf-theme="sunset"] #pf-settings-panel .pf-settings-title, :root[data-pf-theme="ocean"] #pf-settings-panel .pf-settings-title, :root[data-pf-theme="emerald"] #pf-settings-panel .pf-settings-title {
+        background: color-mix(in srgb, var(--pf-bg2) 96%, #000 4%); color: var(--pf-text); border-bottom: 1px solid color-mix(in srgb, var(--pf-border) 78%, transparent);
+    }
+    :root[data-pf-theme="purple"] .pf-settings-status, :root[data-pf-theme="sunset"] .pf-settings-status, :root[data-pf-theme="ocean"] .pf-settings-status, :root[data-pf-theme="emerald"] .pf-settings-status { background: color-mix(in srgb, var(--pf-bg3) 90%, #000 10%); border-color: color-mix(in srgb, var(--pf-border) 76%, #fff 24%); }
+    :root[data-pf-theme="purple"] .pf-settings-status-row strong, :root[data-pf-theme="sunset"] .pf-settings-status-row strong, :root[data-pf-theme="ocean"] .pf-settings-status-row strong, :root[data-pf-theme="emerald"] .pf-settings-status-row strong { color: var(--pf-text2); }
+    :root[data-pf-theme="purple"] .pf-settings-status-ok strong, :root[data-pf-theme="sunset"] .pf-settings-status-ok strong, :root[data-pf-theme="ocean"] .pf-settings-status-ok strong, :root[data-pf-theme="emerald"] .pf-settings-status-ok strong { color: #4ade80; }
+    :root[data-pf-theme="purple"] .pf-settings-status-ok .pf-settings-status-dot, :root[data-pf-theme="sunset"] .pf-settings-status-ok .pf-settings-status-dot, :root[data-pf-theme="ocean"] .pf-settings-status-ok .pf-settings-status-dot, :root[data-pf-theme="emerald"] .pf-settings-status-ok .pf-settings-status-dot { background:#4ade80; box-shadow:0 0 0 3px rgba(74,222,128,.12),0 0 10px rgba(74,222,128,.25); }
+    :root[data-pf-theme="purple"] #pf-settings-close, :root[data-pf-theme="sunset"] #pf-settings-close, :root[data-pf-theme="ocean"] #pf-settings-close, :root[data-pf-theme="emerald"] #pf-settings-close { color:var(--pf-text) !important; background:color-mix(in srgb,var(--pf-bg3) 86%,transparent) !important; border-radius:10px !important; }
+    :root[data-pf-theme="purple"] #pf-settings-close:hover, :root[data-pf-theme="sunset"] #pf-settings-close:hover, :root[data-pf-theme="ocean"] #pf-settings-close:hover, :root[data-pf-theme="emerald"] #pf-settings-close:hover { background:color-mix(in srgb,var(--pf-accent) 24%,var(--pf-bg3)) !important; }
+}
+/* v6.7.6 accessibility additions for mobile dark settings */
+@media (max-width: 640px) {
+    #pf-settings-panel button:focus-visible,
+    #pf-settings-panel input:focus-visible,
+    #pf-settings-panel [role="button"]:focus-visible,
+    #pf-settings-panel [role="combobox"]:focus-visible {
+        outline: 3px solid var(--pf-accent) !important;
+        outline-offset: 2px;
+        border-radius: 8px;
+    }
+    .pf-settings-status-row strong { font-weight: 650; }
+}
+@media (prefers-reduced-motion: reduce) {
+    #pf-settings-panel { transition: none !important; }
+    #pf-settings-overlay { backdrop-filter: none !important; }
+    .pf-settings-status-dot { box-shadow: none !important; }
+}
+@media (forced-colors: active) {
+    #pf-settings-panel { border: 1px solid CanvasText !important; }
+    .pf-settings-status { border: 1px solid CanvasText !important; }
+    .pf-settings-status-dot { background: CanvasText !important; forced-color-adjust: auto; }
+    #pf-settings-panel button:focus-visible, #pf-settings-panel [role="button"]:focus-visible { outline: 3px solid Highlight !important; }
+}
+@media (max-width: 380px) {
+    #pf-settings-panel { height: min(90dvh, 720px); max-height: 90dvh; padding-left: .8rem !important; padding-right: .8rem !important; }
+    .pf-settings-status { padding: .65rem; }
+    .pf-settings-status-row { font-size: .77rem; }
+}
+@media (orientation: landscape) and (max-height: 520px) and (max-width: 900px) {
+    #pf-settings-panel { height: 94dvh; max-height: 94dvh; width: min(440px, 92vw); max-width: 92vw; left: auto; border-radius: 16px 0 0 0; }
 }
 @media (max-height: 520px) {
     #pf-composer-area { max-height: 58dvh; padding-top: .25rem !important; padding-bottom: .35rem !important; }
@@ -1090,6 +1274,8 @@ function pfSpeakLatestReply(){
     window.speechSynthesis.speak(u);
 }
 document.addEventListener('DOMContentLoaded', function(){
+    setTimeout(pfEnhanceScreenReaderSemantics,80);
+    document.addEventListener('keydown',pfSettingsKeydown);
     try{
         window.pfVoice.speakOn = localStorage.getItem('pf-speak') === '1';
         var btn = document.getElementById('pf-speak-toggle');
@@ -1136,12 +1322,51 @@ function pfToggleSidebar(){
 function pfToggleSidebarMobile(){
     document.body.classList.toggle('pf-sidebar-mobile-open');
 }
+function pfEnhanceScreenReaderSemantics(){
+    var panel=document.getElementById('pf-settings-panel');
+    if(panel){ panel.setAttribute('role','dialog'); panel.setAttribute('aria-modal','true'); panel.setAttribute('aria-label','Settings'); panel.setAttribute('tabindex','-1'); if(!panel.hasAttribute('aria-hidden')) panel.setAttribute('aria-hidden','true'); }
+    var close=document.querySelector('#pf-settings-close button, #pf-settings-close');
+    if(close){ close.setAttribute('aria-label','Close settings'); close.setAttribute('title','Close settings'); }
+    var lang=document.querySelector('#pf-settings-language [role="combobox"], #pf-settings-language input');
+    if(lang && !lang.getAttribute('aria-label')) lang.setAttribute('aria-label','Settings language');
+    var theme=document.querySelector('#pf-theme [role="combobox"], #pf-theme input');
+    if(theme && !theme.getAttribute('aria-label')) theme.setAttribute('aria-label','Theme');
+}
+var pfSettingsReturnFocus=null;
+function pfSettingsFocusables(panel){
+    if(!panel) return [];
+    return Array.from(panel.querySelectorAll('button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex="-1"]), [role="button"], [role="combobox"]')).filter(function(el){
+        return el.offsetParent!==null && el.getAttribute('aria-hidden')!=='true';
+    });
+}
+function pfCloseSettings(){
+    var panel=document.getElementById('pf-settings-panel'), overlay=document.getElementById('pf-settings-overlay');
+    if(!panel) return;
+    panel.classList.remove('pf-open'); panel.setAttribute('aria-hidden','true');
+    if(overlay) overlay.classList.remove('pf-open');
+    if(pfSettingsReturnFocus && typeof pfSettingsReturnFocus.focus==='function') pfSettingsReturnFocus.focus();
+}
+function pfSettingsKeydown(e){
+    var panel=document.getElementById('pf-settings-panel');
+    if(!panel || !panel.classList.contains('pf-open')) return;
+    if(e.key==='Escape'){ e.preventDefault(); pfCloseSettings(); return; }
+    if(e.key!=='Tab') return;
+    var items=pfSettingsFocusables(panel); if(!items.length){ e.preventDefault(); panel.focus(); return; }
+    var first=items[0], last=items[items.length-1];
+    if(e.shiftKey && document.activeElement===first){ e.preventDefault(); last.focus(); }
+    else if(!e.shiftKey && document.activeElement===last){ e.preventDefault(); first.focus(); }
+}
 function pfToggleSettings(){
     var panel = document.getElementById('pf-settings-panel');
     var overlay = document.getElementById('pf-settings-overlay');
     if (!panel) return;
-    var open = panel.classList.toggle('pf-open');
-    if (overlay) overlay.classList.toggle('pf-open', open);
+    var willOpen=!panel.classList.contains('pf-open');
+    if(!willOpen){ pfCloseSettings(); return; }
+    pfSettingsReturnFocus=document.activeElement;
+    panel.classList.add('pf-open'); panel.setAttribute('aria-hidden','false');
+    if (overlay) overlay.classList.add('pf-open');
+    pfEnhanceScreenReaderSemantics();
+    setTimeout(function(){ var items=pfSettingsFocusables(panel); (items[0]||panel).focus(); },30);
 }
 function pfToggleTools(){
     document.body.classList.toggle('pf-tools-open');
@@ -1917,6 +2142,20 @@ def task_state_local_reply(message,request=None):
         test=run_public_meta_selftests()
         return (f"🧪 **Meta-question tests**\n- Direct positive: **{test['positive']}**\n- Direct negative: **{test['negative']}**\n- Follow-up positive: **{test['follow_positive']}**\n- Follow-up negative: **{test['follow_negative']}**\n- Edge cases: **{test['follow_edge']}**\n- Result: **{'PASS' if test['passed'] else 'FAIL'}**"
                 + ("" if test['passed'] else "\n- Failures: " + '; '.join(f'{k}: {q}' for k,q in test['failures'][:10])))
+    if re.search(r"\b(?:keyboard test|keyboard navigation test|focus trap test|keyboard accessibility test)\b",t,re.I):
+        test=run_keyboard_navigation_checks()
+        failed=', '.join(test['failures']) if test['failures'] else 'none'
+        return f"⌨️ **Keyboard-navigation checks**\n- Checks: **{test['count']}**\n- Failures: **{failed}**\n- Result: **{'PASS' if test['passed'] else 'FAIL'}**"
+    if re.search(r"\b(?:screen reader test|screen-reader test|aria test|screen reader accessibility test)\b",t,re.I):
+        test=run_screen_reader_accessibility_checks()
+        failed=', '.join(test['failures']) if test['failures'] else 'none'
+        return f"♿ **Screen-reader checks**\n- Semantic checks: **{test['count']}**\n- Failures: **{failed}**\n- Result: **{'PASS' if test['passed'] else 'FAIL'}**"
+    if re.search(r"\b(?:dark accessibility test|dark mode accessibility test|mobile accessibility test|contrast test)\b",t,re.I):
+        test=run_dark_mobile_accessibility_checks()
+        ratios=', '.join(f"{x['name']} {x['ratio']}:1" for x in test['contrast_checks'])
+        return (f"♿ **Dark-mode accessibility checks**\n- Contrast: **{'PASS' if all(x['passed'] for x in test['contrast_checks']) else 'FAIL'}** ({ratios})\n"
+                f"- Touch/focus/motion/forced-colors: **{'PASS' if all(test['invariants'].values()) else 'FAIL'}**\n"
+                f"- Result: **{'PASS' if test['passed'] else 'FAIL'}**")
     if re.search(r"\b(?:confidence test|confidence scoring test|confidence calibration test)\b",t,re.I):
         test=run_confidence_scoring_selftests()
         return f"🧪 **Confidence-scoring tests**\n- Cases: **{test['cases']}**\n- Result: **{'PASS' if test['passed'] else 'FAIL'}**"
@@ -4254,7 +4493,7 @@ def apply_confidentiality_guard(reply):
         return confidential_falcon_reply()
     return text
 
-# ---- v6.7.0 public meta conversation regression tests ----
+# ---- v6.7.6 public meta conversation regression tests ----
 _PUBLIC_META_TRUE_CASES=[
 'pano ka ba kumukuha ng information?','paano ka kumukuha ng impormasyon?','how do you get information?','where do you get information?',
 'pano ka naghahanap ng info?','paano ka naghahanap ng data?','saan galing ang information mo?','saan ka kumukuha ng datos?',
@@ -5017,9 +5256,6 @@ with gr.Blocks(title=TITLE, **blocks_kwargs) as demo:
                 run_lang_box = gr.Textbox(visible=False, elem_id="pf-runlang")
                 run_btn = gr.Button("run", visible=False, elem_id="pf-runbtn")
 
-    # ---------- system status bar (fixed) ----------
-    with gr.Row(elem_id="pf-status-bar"):
-        gr.HTML(build_status_bar_html())
 
     # ---------- settings drawer (theme, voice, about) ----------
     gr.HTML('<script type="application/json" id="pf-ui-i18n-data">'+json.dumps(UI_I18N,ensure_ascii=False).replace('</','<' + chr(92) + '/')+'</script>')
@@ -5027,9 +5263,10 @@ with gr.Blocks(title=TITLE, **blocks_kwargs) as demo:
     with gr.Column(elem_id="pf-settings-panel"):
         with gr.Row():
             settings_heading = gr.HTML(localized_settings_html('en'))
-            settings_close_btn = gr.Button("✕", elem_id="pf-settings-close", scale=0, min_width=32)
+            settings_close_btn = gr.Button("✕", elem_id="pf-settings-close", elem_classes=["pf-sr-close"], scale=0, min_width=32)
         settings_language = gr.Dropdown(choices=SETTINGS_LANGUAGES, value='en', label="Language", interactive=True, filterable=False, elem_id="pf-settings-language")
         theme_selector = gr.Dropdown(choices=[(t["label"], key) for key, t in THEMES.items()], value=DEFAULT_THEME, label="Theme", interactive=True, filterable=False, elem_id="pf-theme")
+        settings_status = gr.HTML(localized_system_status_html('en'), elem_id="pf-settings-system-status")
         settings_detail = gr.HTML(localized_settings_detail_html('en'))
 
     pending_file = gr.State(None)
@@ -5037,6 +5274,7 @@ with gr.Blocks(title=TITLE, **blocks_kwargs) as demo:
     data_ctx = gr.State(None)      # the file we analysed last, so “now make a pie chart…” works
 
     settings_language.change(localized_settings_html, settings_language, settings_heading, show_progress="hidden")
+    settings_language.change(localized_system_status_html, settings_language, settings_status, show_progress="hidden")
     settings_language.change(localized_settings_detail_html, settings_language, settings_detail, show_progress="hidden")
     settings_language.change(localized_action_updates, settings_language, [fb_up,fb_down,copy_btn,read_aloud_btn,learned_btn,newchat_btn], show_progress="hidden")
     settings_language.change(None, settings_language, None, js="(x)=>{try{localStorage.setItem('pf-settings-language',x);var D=JSON.parse(document.getElementById('pf-ui-i18n-data').textContent),t=D[x]||D.en;var set=(sel,v)=>{document.querySelectorAll(sel).forEach(e=>{if(e.tagName==='BUTTON')e.textContent=v;else e.textContent=v})};set('#pf-newchat', '+ '+t.new_chat);set('#pf-actions button:nth-child(3)','📋 '+t.copy);set('#pf-actions button:nth-child(4)','🔊 '+t.read);document.querySelectorAll('.pf-nav-section-title').forEach(e=>{if(/Workspace|Ruang|Espacio|Espace|Arbeits|Área|Area|ワーク|작업/.test(e.textContent))e.textContent=t.workspace;if(/Recent|Kamak|Bag-o|Terkini|Terbaru|Reciente|Récent|Zuletzt|Recentes|Recenti|最近|최근/.test(e.textContent))e.textContent=t.recent});}catch(e){};return x}")
