@@ -2,7 +2,7 @@
 
 
 # ==================================================
-# 💜 PURPLE FALCON PH v6.7.8 — LIVE SKILLS + SELF-LEARNING + FILE ANALYST + NEWS + LOGO + IMAGE/VIDEO 🇵🇭
+# 💜 PURPLE FALCON PH v6.8.1 — LIVE SKILLS + SELF-LEARNING + FILE ANALYST + NEWS + LOGO + IMAGE/VIDEO 🇵🇭
 # ==================================================
 #   ✅ Live skills that learn: weather, exchange rates, world clock, Wikipedia, web search, web pages, earthquakes, dictionary,
 #      country facts, calculator — used whenever the AI model can't answer or is unreachable (falcon_skills.py)
@@ -269,7 +269,7 @@ except ImportError:
     websearch, WEB_STATUS = None, "⚠️ falcon_websearch.py not found next to this script"
 
 print("=" * 60)
-print("💜 PURPLE FALCON PH v6.7.8 — PROTECTED 🇵🇭")
+print("💜 PURPLE FALCON PH v6.8.1 — PROTECTED 🇵🇭")
 if ENV_PATH:
     print(f"   .env file:     {'✅' if not ENV_PROBLEMS else '⚠️'} {ENV_LOADED} setting(s) read")
     for _p in ENV_PROBLEMS: print(f"                  ↳ {_p}")
@@ -361,7 +361,7 @@ def build_status_bar_html():
              ("Database", "Not Connected", False)]
     parts = "".join(f'<div class="pf-status-item{" ok" if ok else ""}"><span class="dot"></span><span>{name}: {state}</span></div>'
                     for name, state, ok in items)
-    return parts + '<div class="pf-status-item"><span>Purple Falcon AI v6.7.8</span></div>'
+    return parts + '<div class="pf-status-item"><span>Purple Falcon AI v6.8.1</span></div>'
 
 def build_sidebar_nav_html():
     soon = lambda icon, label: (f'<div class="pf-nav-item disabled"><span>{icon}</span>'
@@ -427,7 +427,7 @@ except Exception as _e:
     print(f"⚠️ Couldn't prepare chat avatar: {_e}")
 
 # ==================================================
-# SETTINGS LOCALIZATION v6.7.8
+# SETTINGS LOCALIZATION v6.8.1
 # ==================================================
 SETTINGS_LANGUAGES=[('English','en'),('Filipino / Tagalog','tl'),('Cebuano / Bisaya','ceb'),('Malay','ms'),('Indonesian','id'),('Spanish','es'),('French','fr'),('German','de'),('Portuguese','pt'),('Italian','it'),('Japanese / 日本語','ja'),('Korean / 한국어','ko')]
 SETTINGS_I18N={
@@ -457,7 +457,7 @@ UI_I18N={
 'it':{'new_chat':'Nuova Chat','workspace':'Area di lavoro','recent':'Recenti','soon':'Prossimamente','copy':'Copia','read':'Leggi ad alta voce','helpful':'Utile','not_helpful':'Non utile','insights':'Approfondimenti AI','run':'Esegui','running':'Esecuzione…','ready':'Pronto','offline':'Offline','not_connected':'Non connesso','knowledge':'Base di conoscenza','database':'Database','tools':'Strumenti','attach':'Allega file','clear':'Cancella','send':'Invia','stop':'Ferma','download':'Scarica','save':'Salva','reset':'Reimposta','close':'Chiudi','processing':'Elaborazione','uploading':'Caricamento','analyzing':'Analisi','generating':'Generazione','verifying':'Verifica'},
 'ja':{'new_chat':'新しいチャット','workspace':'ワークスペース','recent':'最近','soon':'近日公開','copy':'コピー','read':'読み上げ','helpful':'役に立った','not_helpful':'役に立たなかった','insights':'AI インサイト','run':'実行','running':'実行中…','ready':'準備完了','offline':'オフライン','not_connected':'未接続','knowledge':'ナレッジベース','database':'データベース','tools':'ツール','attach':'ファイルを添付','clear':'クリア','send':'送信','stop':'停止','download':'ダウンロード','save':'保存','reset':'リセット','close':'閉じる','processing':'処理中','uploading':'アップロード中','analyzing':'分析中','generating':'生成中','verifying':'確認中'},
 'ko':{'new_chat':'새 채팅','workspace':'작업 공간','recent':'최근','soon':'곧 제공','copy':'복사','read':'소리내어 읽기','helpful':'도움됨','not_helpful':'도움 안 됨','insights':'AI 인사이트','run':'실행','running':'실행 중…','ready':'준비됨','offline':'오프라인','not_connected':'연결 안 됨','knowledge':'지식 베이스','database':'데이터베이스','tools':'도구','attach':'파일 첨부','clear':'지우기','send':'보내기','stop':'중지','download':'다운로드','save':'저장','reset':'재설정','close':'닫기','processing':'처리 중','uploading':'업로드 중','analyzing':'분석 중','generating':'생성 중','verifying':'확인 중'}}
-# v6.7.8 dark-mode accessibility checks
+# v6.8.1 dark-mode accessibility checks
 # WCAG-style relative luminance / contrast helpers for deterministic theme checks.
 def _a11y_hex_rgb(value):
     v=str(value or '').strip().lstrip('#')
@@ -501,6 +501,24 @@ def run_dark_mobile_accessibility_checks():
     for name,ok in invariants.items():
         if not ok: failures.append((name,'missing','required'))
     return {'passed':not failures,'failures':failures,'contrast_checks':checks,'invariants':invariants}
+
+def run_theme_selector_selftests():
+    """Static regression for theme select/apply/persist synchronization."""
+    source=globals().get('__file__','')
+    try: text=open(source,'r',encoding='utf-8').read() if source else ''
+    except Exception: text=''
+    required={
+      'selected_arg':'THEME_CHANGE_JS = ("(selected) =>' in text,
+      'validated_selection':"valid.indexOf(selected)>-1" in text,
+      'root_attribute':"setAttribute('data-pf-theme',next)" in text,
+      'persistence':"localStorage.setItem('pf-theme',next)" in text,
+      'dropdown_sync':'outputs=[theme_selector], js=THEME_CHANGE_JS' in text,
+      'load_restore':"localStorage.getItem('pf-theme')" in text,
+      'logo_refresh':'pfApplyLogo()' in text,
+      'settings_no_x_scroll':'#pf-settings-panel { overflow-x: hidden !important; }' in text,
+    }
+    failures=[k for k,v in required.items() if not v]
+    return {'passed':not failures,'failures':failures,'checks':required,'count':len(required)}
 
 def run_keyboard_navigation_checks():
     """Static regression for keyboard-only navigation of the Settings dialog."""
@@ -560,7 +578,7 @@ def localized_system_status_html(lang='en'):
 def localized_settings_html(lang='en'):
     x=SETTINGS_I18N.get(lang,SETTINGS_I18N['en']);return f'<div class="pf-settings-title" role="heading" aria-level="2">{x[0]}</div><div class="pf-settings-group-title">{x[2]}</div>'
 def localized_settings_detail_html(lang='en'):
-    x=SETTINGS_I18N.get(lang,SETTINGS_I18N['en']);status=x[7] if AI_CONFIGURED else x[8];on='On' if RUN_CODE_ENABLED else 'Off';return f'<div class="pf-settings-group-title">{x[4]}</div><div style="font-size:.78rem;color:var(--pf-text2)">🎤</div><div class="pf-settings-group-title">{x[5]}</div><div style="font-size:.78rem;color:var(--pf-text2);line-height:1.6">Purple Falcon AI v6.7.8<br>{x[6]}: {on}</div>'
+    x=SETTINGS_I18N.get(lang,SETTINGS_I18N['en']);status=x[7] if AI_CONFIGURED else x[8];on='On' if RUN_CODE_ENABLED else 'Off';return f'<div class="pf-settings-group-title">{x[4]}</div><div style="font-size:.78rem;color:var(--pf-text2)">🎤</div><div class="pf-settings-group-title">{x[5]}</div><div style="font-size:.78rem;color:var(--pf-text2);line-height:1.6">Purple Falcon AI v6.8.1<br>{x[6]}: {on}</div>'
 
 
 def localized_action_updates(lang='en'):
@@ -889,6 +907,19 @@ body.pf-sidebar-collapsed #pf-collapse-btn { transform: rotate(180deg); }
 .pf-bubble a { color: var(--pf-accent2); text-decoration: underline; text-underline-offset: 2px; }
 .pf-bubble.user a { color: #fff; }
 
+.pf-loading-bubble { min-width: min(360px, 78vw); border: 1px solid color-mix(in srgb, var(--pf-accent) 22%, var(--pf-border)); background: linear-gradient(135deg, color-mix(in srgb, var(--pf-ai) 96%, var(--pf-accent) 4%), var(--pf-ai)); }
+.pf-falcon-loading { display:flex; align-items:center; gap:var(--pf-space-3, .65rem); min-height:44px; }
+.pf-falcon-orbit { position:relative; width:34px; height:34px; flex:0 0 34px; border-radius:50%; border:2px solid color-mix(in srgb,var(--pf-accent) 18%,transparent); border-top-color:var(--pf-accent); animation:pfFalconOrbit 1s linear infinite; }
+.pf-falcon-orbit::after { content:'🦅'; position:absolute; inset:0; display:grid; place-items:center; font-size:15px; animation:pfFalconCounter 1s linear infinite; }
+.pf-falcon-orbit span { position:absolute; width:6px; height:6px; border-radius:50%; background:var(--pf-accent2); right:-2px; top:8px; box-shadow:0 0 10px color-mix(in srgb,var(--pf-accent2) 60%,transparent); }
+.pf-loading-copy { display:flex; flex:1 1 auto; min-width:0; flex-direction:column; gap:2px; color:var(--pf-text); }
+.pf-loading-copy strong { font-size:.82rem; font-weight:700; }
+.pf-loading-copy small { color:var(--pf-text2); font-size:.72rem; }
+.pf-falcon-loading .pf-typing { margin-left:auto; flex:0 0 auto; }
+@keyframes pfFalconOrbit { to { transform:rotate(360deg); } }
+@keyframes pfFalconCounter { to { transform:rotate(-360deg); } }
+@media (max-width:640px) { .pf-loading-bubble{min-width:min(300px,88vw)} .pf-falcon-orbit{width:30px;height:30px;flex-basis:30px} .pf-loading-copy strong{font-size:.78rem} }
+@media (prefers-reduced-motion:reduce) { .pf-falcon-orbit,.pf-falcon-orbit::after{animation:none!important} }
 .pf-typing { display: flex; align-items: center; height: 1.4rem; }
 .pf-typing span {
     width: 8px; height: 8px; margin: 0 3px; border-radius: 50%;
@@ -1001,7 +1032,7 @@ body.pf-tools-open #pf-tools-link { background: var(--pf-bg3) !important; color:
 .pf-status-item .dot { width: 6px; height: 6px; border-radius: 50%; background: #6b7280; flex: 0 0 auto; }
 .pf-status-item.ok .dot { background: #22c55e; }
 
-/* ---------- v6.7.8 unified rounded + fluid responsive shell ---------- */
+/* ---------- v6.8.1 unified rounded + fluid responsive shell ---------- */
 :root {
     --pf-radius-xs: clamp(8px, .55vw, 12px);
     --pf-radius-sm: clamp(12px, .8vw, 16px);
@@ -1070,7 +1101,7 @@ body.pf-tools-open #pf-tools-link { background: var(--pf-bg3) !important; color:
     #pf-app-shell { width: min(calc(100% - 32px), 1760px); }
     #pf-chat-scroll, #pf-composer-area { padding-inline: clamp(1.25rem, 2vw, 2.25rem) !important; }
 }
-/* ---------- v6.7.8 fluid spacing system ---------- */
+/* ---------- v6.8.1 fluid spacing system ---------- */
 :root {
     --pf-space-1: clamp(4px, .28vw, 6px);
     --pf-space-2: clamp(6px, .42vw, 9px);
@@ -1138,6 +1169,11 @@ body.pf-tools-open #pf-tools-link { background: var(--pf-bg3) !important; color:
 @media (min-width: 1600px) {
     :root { --pf-content-pad-x: clamp(1.4rem, 1.8vw, 2.3rem); --pf-section-gap: clamp(1rem, 1.15vw, 1.5rem); }
 }
+/* v6.8.1 theme selector + settings overflow hardening */
+#pf-settings-panel { overflow-x: hidden !important; }
+#pf-settings-panel > *, #pf-settings-panel .form, #pf-settings-panel .wrap { max-width: 100% !important; min-width: 0 !important; }
+#pf-theme, #pf-settings-language { width: 100% !important; max-width: 100% !important; min-width: 0 !important; }
+#pf-theme .wrap, #pf-settings-language .wrap { overflow: visible !important; }
 /* ---------- settings drawer ---------- */
 #pf-settings-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 70; display: none; }
 #pf-settings-overlay.pf-open { display: block; }
@@ -1169,7 +1205,7 @@ body.pf-tools-open #pf-tools-link { background: var(--pf-bg3) !important; color:
     body.pf-sidebar-collapsed .pf-nav-label, body.pf-sidebar-collapsed .pf-nav-section-title, body.pf-sidebar-collapsed .pf-recent-list { display: block !important; }
 }
 @media (max-width: 640px) {
-    /* v6.7.8: touch-friendly bottom sheet plus explicit dark-theme mobile treatment */
+    /* v6.8.1: touch-friendly bottom sheet plus explicit dark-theme mobile treatment */
     #pf-settings-overlay { background: rgba(0,0,0,.52); backdrop-filter: blur(2px); }
     #pf-settings-panel {
         top: auto; right: 0; bottom: 0; left: 0;
@@ -1212,7 +1248,7 @@ body.pf-tools-open #pf-tools-link { background: var(--pf-bg3) !important; color:
     #pf-workspace-header { padding-left: .75rem !important; padding-right: .75rem !important; }
     #pf-status-bar { gap: .6rem !important; font-size: .64rem; flex-wrap: nowrap; overflow-x: auto; justify-content: flex-start !important; padding: 0 .6rem; }
 }
-/* v6.7.8 dark-mode mobile settings */
+/* v6.8.1 dark-mode mobile settings */
 @media (max-width: 640px) {
     :root[data-pf-theme="purple"], :root[data-pf-theme="sunset"], :root[data-pf-theme="ocean"], :root[data-pf-theme="emerald"] { color-scheme: dark; }
     :root[data-pf-theme="purple"] #pf-settings-panel, :root[data-pf-theme="sunset"] #pf-settings-panel, :root[data-pf-theme="ocean"] #pf-settings-panel, :root[data-pf-theme="emerald"] #pf-settings-panel {
@@ -1229,7 +1265,7 @@ body.pf-tools-open #pf-tools-link { background: var(--pf-bg3) !important; color:
     :root[data-pf-theme="purple"] #pf-settings-close, :root[data-pf-theme="sunset"] #pf-settings-close, :root[data-pf-theme="ocean"] #pf-settings-close, :root[data-pf-theme="emerald"] #pf-settings-close { color:var(--pf-text) !important; background:color-mix(in srgb,var(--pf-bg3) 86%,transparent) !important; border-radius:10px !important; }
     :root[data-pf-theme="purple"] #pf-settings-close:hover, :root[data-pf-theme="sunset"] #pf-settings-close:hover, :root[data-pf-theme="ocean"] #pf-settings-close:hover, :root[data-pf-theme="emerald"] #pf-settings-close:hover { background:color-mix(in srgb,var(--pf-accent) 24%,var(--pf-bg3)) !important; }
 }
-/* v6.7.8 accessibility additions for mobile dark settings */
+/* v6.8.1 accessibility additions for mobile dark settings */
 @media (max-width: 640px) {
     #pf-settings-panel button:focus-visible,
     #pf-settings-panel input:focus-visible,
@@ -1550,9 +1586,12 @@ HEAD_JS = (_VIEWPORT_META +
            "window.pfToggleSettings=pfToggleSettings;window.pfCopyLatestReply=pfCopyLatestReply;"
            "window.pfReadAloudOnce=pfReadAloudOnce;"
            "})();</script>")
-THEME_CHANGE_JS = ("(t) => {" + _LOGO_FN + "document.documentElement.setAttribute('data-pf-theme',t);"
-                   "try{localStorage.setItem('pf-theme',t);}catch(e){}pfApplyLogo();setTimeout(pfApplyLogo,150);}")
-THEME_LOAD_JS = "() => {" + _LOGO_FN + _PICK_THEME + "pfApplyLogo();setTimeout(pfApplyLogo,300);return t;}"
+THEME_CHANGE_JS = ("(selected) => {" + _LOGO_FN +
+                   "var valid=" + _VALID + ";var next=(typeof selected==='string'&&valid.indexOf(selected)>-1)?selected:'" + DEFAULT_THEME + "';"
+                   "document.documentElement.setAttribute('data-pf-theme',next);"
+                   "try{localStorage.setItem('pf-theme',next);}catch(e){}"
+                   "pfApplyLogo();setTimeout(pfApplyLogo,80);return next;}")
+THEME_LOAD_JS = "() => {" + _LOGO_FN + _PICK_THEME + "pfApplyLogo();setTimeout(pfApplyLogo,120);return t;}"
 SCROLL_JS = "() => {setTimeout(()=>{const el=document.getElementById('pf-chat-scroll');if(el)el.scrollTop=el.scrollHeight;},60);}"
 SPEAK_JS = "() => {if(window.pfSpeakLatestReply) setTimeout(window.pfSpeakLatestReply, 120);}"
 
@@ -2279,6 +2318,17 @@ def task_state_local_reply(message,request=None):
         test=run_public_meta_selftests()
         return (f"🧪 **Meta-question tests**\n- Direct positive: **{test['positive']}**\n- Direct negative: **{test['negative']}**\n- Follow-up positive: **{test['follow_positive']}**\n- Follow-up negative: **{test['follow_negative']}**\n- Edge cases: **{test['follow_edge']}**\n- Result: **{'PASS' if test['passed'] else 'FAIL'}**"
                 + ("" if test['passed'] else "\n- Failures: " + '; '.join(f'{k}: {q}' for k,q in test['failures'][:10])))
+    if re.search(r"\b(?:loading test|falcon loading test|loading state test|generation loading test)\b",t,re.I):
+        test=run_falcon_loading_state_tests(); failed=', '.join(test['failures']) if test['failures'] else 'none'
+        return f"🦅 **Falcon loading-state checks**\n- Checks: **{test['count']}**\n- Failures: **{failed}**\n- Result: **{'PASS' if test['passed'] else 'FAIL'}**"
+    if re.search(r"\b(?:media branding test|image branding test|falcon image test|media provenance test)\b",t,re.I):
+        test=run_custom_falcon_media_branding_tests()
+        failed=', '.join(test['failures']) if test['failures'] else 'none'
+        return f"🖼️ **Purple Falcon media-branding checks**\n- Checks: **{test['count']}**\n- Failures: **{failed}**\n- Result: **{'PASS' if test['passed'] else 'FAIL'}**"
+    if re.search(r"\b(?:theme test|theme selector test|theme selection test|appearance test)\b",t,re.I):
+        test=run_theme_selector_selftests()
+        failed=', '.join(test['failures']) if test['failures'] else 'none'
+        return f"🎨 **Theme-selector checks**\n- Checks: **{test['count']}**\n- Failures: **{failed}**\n- Result: **{'PASS' if test['passed'] else 'FAIL'}**"
     if re.search(r"\b(?:keyboard test|keyboard navigation test|focus trap test|keyboard accessibility test)\b",t,re.I):
         test=run_keyboard_navigation_checks()
         failed=', '.join(test['failures']) if test['failures'] else 'none'
@@ -2446,7 +2496,7 @@ def render_chat_html(typing=False, request: gr.Request = None):
             bubble_cls = "pf-bubble ai pf-analysis" if _is_structured(text_html) else "pf-bubble ai"
             out.append(f'<div class="pf-row ai"><div class="pf-avatar">{_AVATAR_HTML}</div><div class="{bubble_cls}"><div class="pf-name">Purple Falcon</div>{body}<div class="pf-time">{time_str}</div></div></div>')
     if typing:
-        out.append(f'<div class="pf-row ai"><div class="pf-avatar">{_AVATAR_HTML}</div><div class="pf-bubble ai"><div class="pf-name">Purple Falcon</div><div class="pf-typing"><span></span><span></span><span></span></div></div></div>')
+        out.append(f'<div class="pf-row ai pf-loading-row"><div class="pf-avatar pf-loading-avatar">{_AVATAR_HTML}</div><div class="pf-bubble ai pf-loading-bubble" role="status" aria-live="polite" aria-label="Purple Falcon is working"><div class="pf-name">Purple Falcon</div><div class="pf-falcon-loading"><span class="pf-falcon-orbit" aria-hidden="true"><span></span></span><span class="pf-loading-copy"><strong>Purple Falcon is creating</strong><small>Preparing your result...</small></span><span class="pf-typing" aria-hidden="true"><span></span><span></span><span></span></span></div></div></div>')
     return '<div style="padding:.25rem">' + "".join(out) + '</div><div id="pf-end"></div>'
 
 # ==================================================
@@ -3703,6 +3753,37 @@ def _huggingface_image(prompt):
         raise _hf_error(e)
     return img.convert("RGBA")
 
+def run_falcon_loading_state_tests():
+    source=globals().get('__file__','')
+    try: text=open(source,'r',encoding='utf-8').read() if source else ''
+    except Exception: text=''
+    required={
+      'falcon_copy':'Purple Falcon is creating' in text,
+      'accessible_status':'aria-live=\\"polite\\"' in text or 'aria-live="polite"' in text,
+      'status_role':'role=\\"status\\"' in text or 'role="status"' in text,
+      'branded_orbit':'pf-falcon-orbit' in text,
+      'responsive':'@media (max-width:640px)' in text,
+      'reduced_motion':'prefers-reduced-motion:reduce' in text,
+      'provider_neutral':'Preparing your result...' in text,
+    }
+    failures=[k for k,v in required.items() if not v]
+    return {'passed':not failures,'failures':failures,'checks':required,'count':len(required)}
+
+def run_custom_falcon_media_branding_tests():
+    """Regression: user-facing media success copy is Falcon-branded and provider-neutral."""
+    source=globals().get('__file__','')
+    try: text=open(source,'r',encoding='utf-8').read() if source else ''
+    except Exception: text=''
+    required={
+      'falcon_image_label':'return f"🖼️ **Purple Falcon image created:** {clean}"' in text,
+      'falcon_video_label':'return f"🎬 **Purple Falcon video created:** {clean}"' in text,
+      'legacy_image_copy_removed':'return f"🖼️ **Image created:** {clean}\\n(via {used})"' not in text,
+      'legacy_video_copy_removed':'return f"🎬 **Video created:** {clean}\\n(via {used})"' not in text,
+      'diagnostics_terminal_only':'print(f"✅ Image ready via {used}")' in text and 'print(f"✅ Video ready via {used}")' in text,
+    }
+    failures=[k for k,v in required.items() if not v]
+    return {'passed':not failures,'failures':failures,'checks':required,'count':len(required)}
+
 def gen_image(prompt, theme_key=DEFAULT_THEME):
     clean = _clean_media_prompt(prompt)
     if not clean:
@@ -3752,7 +3833,7 @@ def gen_image(prompt, theme_key=DEFAULT_THEME):
                            radius=14, fill=t["accent"])
     draw.text((x, y), label, font=font, fill="white")
     print(f"✅ Image ready via {used}")
-    return f"🖼️ **Image created:** {clean}\n(via {used})", img.convert("RGB")
+    return f"🖼️ **Purple Falcon image created:** {clean}", img.convert("RGB")
 
 # ==================================================
 # 🎬 VIDEO GENERATOR — tries each video model; if none work, makes a still image instead
@@ -3781,7 +3862,7 @@ def gen_video(prompt, theme_key=DEFAULT_THEME):
         tmp.write(data)
         tmp.close()
         print(f"✅ Video ready via {used}")
-        return f"🎬 **Video created:** {clean}\n(via {used})", tmp.name, None
+        return f"🎬 **Purple Falcon video created:** {clean}", tmp.name, None
 
     # every video model failed → degrade gracefully to a still image of the same idea
     image_reply, img = gen_image(prompt, theme_key)
@@ -4630,7 +4711,7 @@ def apply_confidentiality_guard(reply):
         return confidential_falcon_reply()
     return text
 
-# ---- v6.7.8 public meta conversation regression tests ----
+# ---- v6.8.1 public meta conversation regression tests ----
 _PUBLIC_META_TRUE_CASES=[
 'pano ka ba kumukuha ng information?','paano ka kumukuha ng impormasyon?','how do you get information?','where do you get information?',
 'pano ka naghahanap ng info?','paano ka naghahanap ng data?','saan galing ang information mo?','saan ka kumukuha ng datos?',
@@ -5415,7 +5496,7 @@ with gr.Blocks(title=TITLE, **blocks_kwargs) as demo:
     settings_language.change(localized_settings_detail_html, settings_language, settings_detail, show_progress="hidden")
     settings_language.change(localized_action_updates, settings_language, [fb_up,fb_down,copy_btn,read_aloud_btn,learned_btn,newchat_btn], show_progress="hidden")
     settings_language.change(None, settings_language, None, js="(x)=>{try{localStorage.setItem('pf-settings-language',x);var D=JSON.parse(document.getElementById('pf-ui-i18n-data').textContent),t=D[x]||D.en;var set=(sel,v)=>{document.querySelectorAll(sel).forEach(e=>{if(e.tagName==='BUTTON')e.textContent=v;else e.textContent=v})};set('#pf-newchat', '+ '+t.new_chat);set('#pf-actions button:nth-child(3)','📋 '+t.copy);set('#pf-actions button:nth-child(4)','🔊 '+t.read);document.querySelectorAll('.pf-nav-section-title').forEach(e=>{if(/Workspace|Ruang|Espacio|Espace|Arbeits|Área|Area|ワーク|작업/.test(e.textContent))e.textContent=t.workspace;if(/Recent|Kamak|Bag-o|Terkini|Terbaru|Reciente|Récent|Zuletzt|Recentes|Recenti|最近|최근/.test(e.textContent))e.textContent=t.recent});}catch(e){};return x}")
-    theme_selector.change(None, inputs=[theme_selector], outputs=None, js=THEME_CHANGE_JS)
+    theme_selector.change(None, inputs=[theme_selector], outputs=[theme_selector], js=THEME_CHANGE_JS)
     demo.load(None, None, [theme_selector], js=THEME_LOAD_JS)
     demo.load(None, None, [settings_language], js="()=>{try{return localStorage.getItem('pf-settings-language')||'en'}catch(e){return 'en'}}")
     demo.load(render_chat_html, None, chat_display, show_progress="hidden")
