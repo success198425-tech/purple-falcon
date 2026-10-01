@@ -2,7 +2,7 @@
 
 
 # ==================================================
-# 💜 PURPLE FALCON PH v6.7.6 — LIVE SKILLS + SELF-LEARNING + FILE ANALYST + NEWS + LOGO + IMAGE/VIDEO 🇵🇭
+# 💜 PURPLE FALCON PH v6.7.8 — LIVE SKILLS + SELF-LEARNING + FILE ANALYST + NEWS + LOGO + IMAGE/VIDEO 🇵🇭
 # ==================================================
 #   ✅ Live skills that learn: weather, exchange rates, world clock, Wikipedia, web search, web pages, earthquakes, dictionary,
 #      country facts, calculator — used whenever the AI model can't answer or is unreachable (falcon_skills.py)
@@ -269,7 +269,7 @@ except ImportError:
     websearch, WEB_STATUS = None, "⚠️ falcon_websearch.py not found next to this script"
 
 print("=" * 60)
-print("💜 PURPLE FALCON PH v6.7.6 — PROTECTED 🇵🇭")
+print("💜 PURPLE FALCON PH v6.7.8 — PROTECTED 🇵🇭")
 if ENV_PATH:
     print(f"   .env file:     {'✅' if not ENV_PROBLEMS else '⚠️'} {ENV_LOADED} setting(s) read")
     for _p in ENV_PROBLEMS: print(f"                  ↳ {_p}")
@@ -361,7 +361,7 @@ def build_status_bar_html():
              ("Database", "Not Connected", False)]
     parts = "".join(f'<div class="pf-status-item{" ok" if ok else ""}"><span class="dot"></span><span>{name}: {state}</span></div>'
                     for name, state, ok in items)
-    return parts + '<div class="pf-status-item"><span>Purple Falcon AI v6.7.6</span></div>'
+    return parts + '<div class="pf-status-item"><span>Purple Falcon AI v6.7.8</span></div>'
 
 def build_sidebar_nav_html():
     soon = lambda icon, label: (f'<div class="pf-nav-item disabled"><span>{icon}</span>'
@@ -427,7 +427,7 @@ except Exception as _e:
     print(f"⚠️ Couldn't prepare chat avatar: {_e}")
 
 # ==================================================
-# SETTINGS LOCALIZATION v6.7.6
+# SETTINGS LOCALIZATION v6.7.8
 # ==================================================
 SETTINGS_LANGUAGES=[('English','en'),('Filipino / Tagalog','tl'),('Cebuano / Bisaya','ceb'),('Malay','ms'),('Indonesian','id'),('Spanish','es'),('French','fr'),('German','de'),('Portuguese','pt'),('Italian','it'),('Japanese / 日本語','ja'),('Korean / 한국어','ko')]
 SETTINGS_I18N={
@@ -457,7 +457,7 @@ UI_I18N={
 'it':{'new_chat':'Nuova Chat','workspace':'Area di lavoro','recent':'Recenti','soon':'Prossimamente','copy':'Copia','read':'Leggi ad alta voce','helpful':'Utile','not_helpful':'Non utile','insights':'Approfondimenti AI','run':'Esegui','running':'Esecuzione…','ready':'Pronto','offline':'Offline','not_connected':'Non connesso','knowledge':'Base di conoscenza','database':'Database','tools':'Strumenti','attach':'Allega file','clear':'Cancella','send':'Invia','stop':'Ferma','download':'Scarica','save':'Salva','reset':'Reimposta','close':'Chiudi','processing':'Elaborazione','uploading':'Caricamento','analyzing':'Analisi','generating':'Generazione','verifying':'Verifica'},
 'ja':{'new_chat':'新しいチャット','workspace':'ワークスペース','recent':'最近','soon':'近日公開','copy':'コピー','read':'読み上げ','helpful':'役に立った','not_helpful':'役に立たなかった','insights':'AI インサイト','run':'実行','running':'実行中…','ready':'準備完了','offline':'オフライン','not_connected':'未接続','knowledge':'ナレッジベース','database':'データベース','tools':'ツール','attach':'ファイルを添付','clear':'クリア','send':'送信','stop':'停止','download':'ダウンロード','save':'保存','reset':'リセット','close':'閉じる','processing':'処理中','uploading':'アップロード中','analyzing':'分析中','generating':'生成中','verifying':'確認中'},
 'ko':{'new_chat':'새 채팅','workspace':'작업 공간','recent':'최근','soon':'곧 제공','copy':'복사','read':'소리내어 읽기','helpful':'도움됨','not_helpful':'도움 안 됨','insights':'AI 인사이트','run':'실행','running':'실행 중…','ready':'준비됨','offline':'오프라인','not_connected':'연결 안 됨','knowledge':'지식 베이스','database':'데이터베이스','tools':'도구','attach':'파일 첨부','clear':'지우기','send':'보내기','stop':'중지','download':'다운로드','save':'저장','reset':'재설정','close':'닫기','processing':'처리 중','uploading':'업로드 중','analyzing':'분석 중','generating':'생성 중','verifying':'확인 중'}}
-# v6.7.6 dark-mode accessibility checks
+# v6.7.8 dark-mode accessibility checks
 # WCAG-style relative luminance / contrast helpers for deterministic theme checks.
 def _a11y_hex_rgb(value):
     v=str(value or '').strip().lstrip('#')
@@ -560,7 +560,7 @@ def localized_system_status_html(lang='en'):
 def localized_settings_html(lang='en'):
     x=SETTINGS_I18N.get(lang,SETTINGS_I18N['en']);return f'<div class="pf-settings-title" role="heading" aria-level="2">{x[0]}</div><div class="pf-settings-group-title">{x[2]}</div>'
 def localized_settings_detail_html(lang='en'):
-    x=SETTINGS_I18N.get(lang,SETTINGS_I18N['en']);status=x[7] if AI_CONFIGURED else x[8];on='On' if RUN_CODE_ENABLED else 'Off';return f'<div class="pf-settings-group-title">{x[4]}</div><div style="font-size:.78rem;color:var(--pf-text2)">🎤</div><div class="pf-settings-group-title">{x[5]}</div><div style="font-size:.78rem;color:var(--pf-text2);line-height:1.6">Purple Falcon AI v6.7.6<br>{x[6]}: {on}</div>'
+    x=SETTINGS_I18N.get(lang,SETTINGS_I18N['en']);status=x[7] if AI_CONFIGURED else x[8];on='On' if RUN_CODE_ENABLED else 'Off';return f'<div class="pf-settings-group-title">{x[4]}</div><div style="font-size:.78rem;color:var(--pf-text2)">🎤</div><div class="pf-settings-group-title">{x[5]}</div><div style="font-size:.78rem;color:var(--pf-text2);line-height:1.6">Purple Falcon AI v6.7.8<br>{x[6]}: {on}</div>'
 
 
 def localized_action_updates(lang='en'):
@@ -1001,6 +1001,143 @@ body.pf-tools-open #pf-tools-link { background: var(--pf-bg3) !important; color:
 .pf-status-item .dot { width: 6px; height: 6px; border-radius: 50%; background: #6b7280; flex: 0 0 auto; }
 .pf-status-item.ok .dot { background: #22c55e; }
 
+/* ---------- v6.7.8 unified rounded + fluid responsive shell ---------- */
+:root {
+    --pf-radius-xs: clamp(8px, .55vw, 12px);
+    --pf-radius-sm: clamp(12px, .8vw, 16px);
+    --pf-radius-md: clamp(16px, 1.1vw, 22px);
+    --pf-radius-lg: clamp(20px, 1.6vw, 30px);
+    --pf-fluid-pad: clamp(.55rem, 1.15vw, 1.25rem);
+    --pf-fluid-gap: clamp(.4rem, .9vw, 1rem);
+}
+.gradio-container {
+    width: min(100%, var(--pf-max-app-w)) !important;
+    border-radius: var(--pf-radius-lg) !important;
+    overflow: hidden !important;
+}
+#pf-app-shell {
+    width: calc(100% - clamp(8px, 1.4vw, 24px));
+    height: calc(100dvh - clamp(8px, 1.4vw, 24px));
+    margin: clamp(4px, .7vw, 12px) auto;
+    border: 1px solid var(--pf-border);
+    border-radius: var(--pf-radius-lg);
+    overflow: hidden !important;
+    box-shadow: 0 12px 38px rgba(20,16,35,.12);
+}
+#pf-app-header { border-radius: var(--pf-radius-lg) var(--pf-radius-lg) 0 0; padding-inline: var(--pf-fluid-pad) !important; }
+#pf-body-row { gap: var(--pf-fluid-gap) !important; min-width: 0 !important; }
+#pf-sidebar {
+    border-radius: 0 var(--pf-radius-md) var(--pf-radius-md) 0;
+    overflow: hidden !important;
+    min-width: 0 !important;
+}
+#pf-sidebar-top, #pf-sidebar-fixed, #pf-sidebar-scroll, #pf-sidebar-footer { min-width: 0 !important; }
+#pf-sidebar button, .pf-nav-item, .pf-recent-item { border-radius: var(--pf-radius-sm) !important; }
+#pf-main, #pf-workspace { min-width: 0 !important; overflow: hidden !important; }
+#pf-workspace-header { margin: .35rem var(--pf-fluid-pad) 0 !important; border-radius: var(--pf-radius-md); border: 1px solid var(--pf-border); padding-inline: var(--pf-fluid-pad) !important; }
+#pf-chat-scroll { min-width: 0 !important; padding-inline: var(--pf-fluid-pad) !important; }
+.pf-bubble { border-radius: var(--pf-radius-md) !important; overflow-wrap: anywhere; word-break: break-word; }
+.pf-avatar, .pf-avatar img { border-radius: 50% !important; }
+#pf-composer-area { padding-inline: var(--pf-fluid-pad) !important; }
+#pf-inputbar { border-radius: 999px !important; overflow: hidden !important; box-shadow: 0 5px 20px rgba(20,16,35,.10); }
+#pf-plus, #pf-send, #pf-mic, .pf-quick-btn, .pf-action-btn { border-radius: 999px !important; }
+.pf-kpi-card, .pf-codeblock, .pf-vision-card, .pf-table-wrap { border-radius: var(--pf-radius-sm) !important; overflow: hidden; }
+#pf-settings-panel { border-radius: var(--pf-radius-lg) 0 0 var(--pf-radius-lg); }
+.pf-settings-status { border-radius: var(--pf-radius-sm); }
+
+@media (max-width: 1023px) {
+    #pf-app-shell { width: calc(100% - 12px); height: calc(100dvh - 12px); margin: 6px auto; }
+    #pf-sidebar { border-radius: 0 var(--pf-radius-lg) var(--pf-radius-lg) 0; }
+    #pf-workspace-header { margin-inline: .7rem !important; }
+}
+@media (max-width: 640px) {
+    #pf-app-shell { width: calc(100% - 8px); height: calc(100dvh - 8px); margin: 4px auto; border-radius: 18px; }
+    #pf-app-header { border-radius: 18px 18px 0 0; }
+    #pf-workspace-header { margin: .3rem .55rem 0 !important; border-radius: 14px; }
+    #pf-chat-scroll { padding-inline: clamp(.55rem, 3vw, .9rem) !important; }
+    #pf-composer-area { padding-inline: clamp(.55rem, 3vw, .9rem) !important; }
+    #pf-inputbar { border-radius: 22px !important; }
+    .pf-bubble { border-radius: 16px !important; }
+    #pf-settings-panel { border-radius: 20px 20px 0 0 !important; }
+}
+@media (max-width: 380px) {
+    #pf-app-shell { width: calc(100% - 4px); height: calc(100dvh - 4px); margin: 2px auto; border-radius: 14px; }
+    #pf-app-header { border-radius: 14px 14px 0 0; }
+    #pf-workspace-header { margin-inline: .4rem !important; }
+    .pf-bubble { border-radius: 14px !important; }
+}
+@media (min-width: 1600px) {
+    #pf-app-shell { width: min(calc(100% - 32px), 1760px); }
+    #pf-chat-scroll, #pf-composer-area { padding-inline: clamp(1.25rem, 2vw, 2.25rem) !important; }
+}
+/* ---------- v6.7.8 fluid spacing system ---------- */
+:root {
+    --pf-space-1: clamp(4px, .28vw, 6px);
+    --pf-space-2: clamp(6px, .42vw, 9px);
+    --pf-space-3: clamp(8px, .62vw, 12px);
+    --pf-space-4: clamp(10px, .82vw, 16px);
+    --pf-space-5: clamp(12px, 1.05vw, 20px);
+    --pf-space-6: clamp(16px, 1.35vw, 26px);
+    --pf-space-7: clamp(20px, 1.8vw, 34px);
+    --pf-content-pad-x: clamp(.65rem, 1.45vw, 1.75rem);
+    --pf-content-pad-y: clamp(.45rem, 1vh, .95rem);
+    --pf-control-gap: clamp(.35rem, .65vw, .75rem);
+    --pf-section-gap: clamp(.7rem, 1.25vw, 1.4rem);
+}
+#pf-app-header { padding-inline: var(--pf-content-pad-x) !important; gap: var(--pf-control-gap) !important; }
+#pf-body-row { gap: var(--pf-space-3) !important; }
+#pf-sidebar-fixed { padding: var(--pf-space-5) var(--pf-space-4) 0 !important; }
+#pf-sidebar-scroll { padding-inline: var(--pf-space-4) !important; }
+#pf-sidebar-footer { padding: var(--pf-space-4) !important; }
+#pf-sidebar-top { gap: var(--pf-space-2) !important; margin-bottom: var(--pf-space-5) !important; }
+.pf-nav-section-title { margin-top: var(--pf-space-5) !important; margin-bottom: var(--pf-space-2) !important; }
+.pf-nav-item, .pf-recent-item { margin-block: var(--pf-space-1) !important; padding: var(--pf-space-3) var(--pf-space-4) !important; }
+#pf-workspace-header { margin: var(--pf-space-2) var(--pf-content-pad-x) 0 !important; padding: var(--pf-space-3) var(--pf-content-pad-x) !important; }
+#pf-chat-scroll { padding: var(--pf-content-pad-y) var(--pf-content-pad-x) 0 !important; }
+.pf-row { margin-block: var(--pf-space-3) !important; gap: var(--pf-space-3) !important; }
+.pf-bubble { padding: clamp(.65rem, .85vw, .95rem) clamp(.8rem, 1.1vw, 1.2rem) !important; }
+.pf-bubble p, .pf-bubble ul, .pf-bubble ol { margin-top: var(--pf-space-2); margin-bottom: var(--pf-space-2); }
+#pf-composer-area { padding: var(--pf-space-2) var(--pf-content-pad-x) var(--pf-space-4) !important; }
+#pf-inputbar { gap: var(--pf-control-gap) !important; padding: var(--pf-space-2) !important; }
+#pf-quick, #pf-actions { gap: var(--pf-control-gap) !important; }
+.pf-quick-btn, .pf-action-btn { padding-inline: clamp(.65rem, 1vw, 1rem) !important; }
+.pf-kpi-grid { gap: var(--pf-space-3) !important; margin-block: var(--pf-space-3) !important; }
+.pf-kpi-card { padding: var(--pf-space-3) var(--pf-space-4) !important; }
+.pf-codeblock { margin-block: var(--pf-space-3) !important; }
+.pf-code-toolbar { gap: var(--pf-space-2) !important; padding: var(--pf-space-2) var(--pf-space-3) !important; }
+#pf-settings-panel { padding: var(--pf-section-gap) !important; }
+.pf-settings-title { margin-bottom: var(--pf-section-gap) !important; }
+.pf-settings-group-title { margin: var(--pf-section-gap) 0 var(--pf-space-2) !important; }
+.pf-settings-status { gap: var(--pf-space-3) !important; padding: var(--pf-space-4) !important; }
+.pf-settings-status-row { gap: var(--pf-space-2) !important; }
+
+@media (max-width: 1023px) {
+    :root { --pf-content-pad-x: clamp(.7rem, 2vw, 1.15rem); --pf-section-gap: clamp(.65rem, 1.8vw, 1.1rem); }
+    #pf-body-row { gap: var(--pf-space-2) !important; }
+}
+@media (max-width: 640px) {
+    :root {
+        --pf-content-pad-x: clamp(.55rem, 3.2vw, .9rem);
+        --pf-content-pad-y: clamp(.35rem, 1.4vh, .7rem);
+        --pf-control-gap: clamp(.3rem, 2vw, .55rem);
+        --pf-section-gap: clamp(.6rem, 3vw, 1rem);
+    }
+    #pf-app-header { padding-inline: var(--pf-content-pad-x) !important; }
+    #pf-workspace-header { margin-inline: var(--pf-content-pad-x) !important; padding-inline: var(--pf-content-pad-x) !important; }
+    #pf-chat-scroll { padding-inline: var(--pf-content-pad-x) !important; }
+    .pf-row { margin-block: clamp(6px, 1.8vw, 10px) !important; gap: clamp(6px, 2vw, 10px) !important; }
+    .pf-bubble { padding: clamp(.58rem, 2.6vw, .78rem) clamp(.72rem, 3vw, .95rem) !important; }
+    #pf-composer-area { padding: var(--pf-space-2) var(--pf-content-pad-x) calc(var(--pf-space-3) + env(safe-area-inset-bottom)) !important; }
+    #pf-settings-panel { padding: var(--pf-section-gap) var(--pf-content-pad-x) calc(var(--pf-section-gap) + env(safe-area-inset-bottom)) !important; }
+}
+@media (max-width: 380px) {
+    :root { --pf-content-pad-x: clamp(.42rem, 2.8vw, .65rem); --pf-control-gap: .3rem; }
+    .pf-bubble { padding: .58rem .72rem !important; }
+    .pf-nav-item, .pf-recent-item { padding: .55rem .65rem !important; }
+}
+@media (min-width: 1600px) {
+    :root { --pf-content-pad-x: clamp(1.4rem, 1.8vw, 2.3rem); --pf-section-gap: clamp(1rem, 1.15vw, 1.5rem); }
+}
 /* ---------- settings drawer ---------- */
 #pf-settings-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 70; display: none; }
 #pf-settings-overlay.pf-open { display: block; }
@@ -1032,7 +1169,7 @@ body.pf-tools-open #pf-tools-link { background: var(--pf-bg3) !important; color:
     body.pf-sidebar-collapsed .pf-nav-label, body.pf-sidebar-collapsed .pf-nav-section-title, body.pf-sidebar-collapsed .pf-recent-list { display: block !important; }
 }
 @media (max-width: 640px) {
-    /* v6.7.6: touch-friendly bottom sheet plus explicit dark-theme mobile treatment */
+    /* v6.7.8: touch-friendly bottom sheet plus explicit dark-theme mobile treatment */
     #pf-settings-overlay { background: rgba(0,0,0,.52); backdrop-filter: blur(2px); }
     #pf-settings-panel {
         top: auto; right: 0; bottom: 0; left: 0;
@@ -1075,7 +1212,7 @@ body.pf-tools-open #pf-tools-link { background: var(--pf-bg3) !important; color:
     #pf-workspace-header { padding-left: .75rem !important; padding-right: .75rem !important; }
     #pf-status-bar { gap: .6rem !important; font-size: .64rem; flex-wrap: nowrap; overflow-x: auto; justify-content: flex-start !important; padding: 0 .6rem; }
 }
-/* v6.7.6 dark-mode mobile settings */
+/* v6.7.8 dark-mode mobile settings */
 @media (max-width: 640px) {
     :root[data-pf-theme="purple"], :root[data-pf-theme="sunset"], :root[data-pf-theme="ocean"], :root[data-pf-theme="emerald"] { color-scheme: dark; }
     :root[data-pf-theme="purple"] #pf-settings-panel, :root[data-pf-theme="sunset"] #pf-settings-panel, :root[data-pf-theme="ocean"] #pf-settings-panel, :root[data-pf-theme="emerald"] #pf-settings-panel {
@@ -1092,7 +1229,7 @@ body.pf-tools-open #pf-tools-link { background: var(--pf-bg3) !important; color:
     :root[data-pf-theme="purple"] #pf-settings-close, :root[data-pf-theme="sunset"] #pf-settings-close, :root[data-pf-theme="ocean"] #pf-settings-close, :root[data-pf-theme="emerald"] #pf-settings-close { color:var(--pf-text) !important; background:color-mix(in srgb,var(--pf-bg3) 86%,transparent) !important; border-radius:10px !important; }
     :root[data-pf-theme="purple"] #pf-settings-close:hover, :root[data-pf-theme="sunset"] #pf-settings-close:hover, :root[data-pf-theme="ocean"] #pf-settings-close:hover, :root[data-pf-theme="emerald"] #pf-settings-close:hover { background:color-mix(in srgb,var(--pf-accent) 24%,var(--pf-bg3)) !important; }
 }
-/* v6.7.6 accessibility additions for mobile dark settings */
+/* v6.7.8 accessibility additions for mobile dark settings */
 @media (max-width: 640px) {
     #pf-settings-panel button:focus-visible,
     #pf-settings-panel input:focus-visible,
@@ -4493,7 +4630,7 @@ def apply_confidentiality_guard(reply):
         return confidential_falcon_reply()
     return text
 
-# ---- v6.7.6 public meta conversation regression tests ----
+# ---- v6.7.8 public meta conversation regression tests ----
 _PUBLIC_META_TRUE_CASES=[
 'pano ka ba kumukuha ng information?','paano ka kumukuha ng impormasyon?','how do you get information?','where do you get information?',
 'pano ka naghahanap ng info?','paano ka naghahanap ng data?','saan galing ang information mo?','saan ka kumukuha ng datos?',
