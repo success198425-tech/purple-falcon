@@ -2,7 +2,7 @@
 
 
 # ==================================================
-# 💜 PURPLE FALCON PH v6.4.2 — LIVE SKILLS + SELF-LEARNING + FILE ANALYST + NEWS + LOGO + IMAGE/VIDEO 🇵🇭
+# 💜 PURPLE FALCON PH v6.6.8 — LIVE SKILLS + SELF-LEARNING + FILE ANALYST + NEWS + LOGO + IMAGE/VIDEO 🇵🇭
 # ==================================================
 #   ✅ Live skills that learn: weather, exchange rates, world clock, Wikipedia, web search, web pages, earthquakes, dictionary,
 #      country facts, calculator — used whenever the AI model can't answer or is unreachable (falcon_skills.py)
@@ -269,7 +269,7 @@ except ImportError:
     websearch, WEB_STATUS = None, "⚠️ falcon_websearch.py not found next to this script"
 
 print("=" * 60)
-print("💜 PURPLE FALCON PH v6.4.2 — PROTECTED 🇵🇭")
+print("💜 PURPLE FALCON PH v6.6.8 — PROTECTED 🇵🇭")
 if ENV_PATH:
     print(f"   .env file:     {'✅' if not ENV_PROBLEMS else '⚠️'} {ENV_LOADED} setting(s) read")
     for _p in ENV_PROBLEMS: print(f"                  ↳ {_p}")
@@ -361,7 +361,7 @@ def build_status_bar_html():
              ("Database", "Not Connected", False)]
     parts = "".join(f'<div class="pf-status-item{" ok" if ok else ""}"><span class="dot"></span><span>{name}: {state}</span></div>'
                     for name, state, ok in items)
-    return parts + '<div class="pf-status-item"><span>Purple Falcon AI v6.4.2</span></div>'
+    return parts + '<div class="pf-status-item"><span>Purple Falcon AI v6.6.8</span></div>'
 
 def build_sidebar_nav_html():
     soon = lambda icon, label: (f'<div class="pf-nav-item disabled"><span>{icon}</span>'
@@ -1190,6 +1190,663 @@ def save_message(role, text, file=None, key=None, request=None):
         json.dump(data, f, ensure_ascii=False)
 
 # ==================================================
+# 📋 V6.5.3 EXPLICIT TASK STATE TRACKING
+# Session-local ledger persisted beside chat history.
+# ==================================================
+_TASK_DONE_RE=re.compile(r"\b(?:done|completed|finished|resolved|fixed|solved|tapos|okay na|naayos|complete na)\b",re.I)
+_TASK_CANCEL_RE=re.compile(r"\b(?:cancel|stop task|abort|never mind|nevermind|wag na|huwag na|forget task)\b",re.I)
+_TASK_NEXT_RE=re.compile(r"\b(?:next|sunod|proceed|continue|tuloy|go ahead|okay next|what next|ano next)\b",re.I)
+_TASK_NEW_RE=re.compile(r"\b(?:new task|bagong task|new topic|ibang topic|iba naman|change topic)\b",re.I)
+_TASK_ARTIFACT_RE=re.compile(r"\b(?:file|excel|xlsx|csv|spreadsheet|workbook|ppt|pptx|powerpoint|pdf|docx|image|screenshot|code|script|chart|report)\b",re.I)
+_TASK_REQUEST_RE=re.compile(r"\b(?:make|create|build|analy[sz]e|check|review|fix|debug|generate|write|investigate|troubleshoot|summari[sz]e|compare|convert|deploy|integrate|add|update|improve)\b",re.I)
+
+def _task_state_path(request=None):
+    chat_path=_chat_session_path(request)
+    if not chat_path: return None
+    return chat_path + '.task.json'
+
+def default_task_state():
+    return {'active_task':'','status':'idle','completed_step':'','pending_step':'','attached_artifact':'','last_result':'','domain':'conversation','confidence':'none','plan':[],'current_step':0,'plan_version':0,'replans':0,'replan_history':[],'last_failure':'','checkpoints':[],'rollback_history':[],'rollback_count':0,'pending_rollback':None,'pending_action':None,'authorization_history':[],'sha256_audit':[],'transfer_hashes':{},'hash_retry_history':[],'updated_at':''}
+
+def load_task_state(request=None):
+    state=default_task_state(); path=_task_state_path(request)
+    if not path or not os.path.isfile(path): return state
+    try:
+        raw=json.load(open(path,'r',encoding='utf-8'))
+        if isinstance(raw,dict): state.update({k:raw.get(k,state[k]) for k in state})
+    except Exception as e: print(f"⚠️ Task state read warning: {e}")
+    return state
+
+def save_task_state(state,request=None):
+    path=_task_state_path(request)
+    if not path: return state
+    state=dict(default_task_state(),**(state or {})); state['updated_at']=datetime.now().isoformat(timespec='seconds')
+    try:
+        with open(path+'.tmp','w',encoding='utf-8') as f: json.dump(state,f,ensure_ascii=False,indent=2)
+        os.replace(path+'.tmp',path)
+    except Exception as e: print(f"⚠️ Task state write warning: {e}")
+    return state
+
+def _task_domain(text,paths=None):
+    t=(text or '')
+    if paths:
+        names=' '.join(os.path.basename(x).lower() for x in paths)
+        if re.search(r'\.(?:xlsx|xlsm|csv|tsv)$',names): return 'file/data'
+        if re.search(r'\.(?:png|jpg|jpeg|webp|gif)$',names): return 'vision'
+        if re.search(r'\.(?:py|js|ts|java|c|cpp|cs|go|rs)$',names): return 'code'
+        return 'file'
+    d=_context_domain(t)
+    if d!='conversation': return d
+    if is_coding_request(t): return 'code'
+    if is_math_request(t): return 'math'
+    return 'conversation'
+
+def _make_step(step_id,title,kind='reasoning',requires=None,done_when=''):
+    return {'id':step_id,'title':title,'kind':kind,'requires':requires or [],'status':'pending','done_when':done_when,'result':'','validation':'pending','validation_reason':'','attempts':0,'max_attempts':2}
+
+def build_task_plan(task,domain='conversation',paths=None):
+    """Deterministic task planner. Plans capability sequence without needing the advanced LLM."""
+    t=(task or '').lower(); paths=paths or []; steps=[]
+    if domain in ('file/data','file'):
+        steps=[_make_step(1,'Inspect file structure and data quality','file',['artifact'],'Readable schema and row/column profile'),
+               _make_step(2,'Compute core deterministic analysis','data',['step:1'],'Verified metrics calculated'),
+               _make_step(3,'Identify priority findings and anomalies','analysis',['step:2'],'Ranked findings with evidence'),
+               _make_step(4,'Create charts / Pareto / trends when applicable','visualization',['step:2'],'Requested or applicable visuals generated'),
+               _make_step(5,'Summarize actions and export report when requested','report',['step:3'],'Final summary/report prepared')]
+    elif domain=='code':
+        steps=[_make_step(1,'Clarify expected behavior and inspect code/context','code',['context'],'Problem boundary identified'),
+               _make_step(2,'Reproduce or isolate the likely failure','debug',['step:1'],'Failure point identified'),
+               _make_step(3,'Implement the smallest safe fix','code',['step:2'],'Fix prepared'),
+               _make_step(4,'Verify behavior and regression risks','verification',['step:3'],'Verification complete')]
+    elif domain=='machine':
+        steps=[_make_step(1,'Collect verified observations and operating conditions','evidence',['context'],'Evidence baseline established'),
+               _make_step(2,'Classify the symptom and build candidate mechanisms','reasoning',['step:1'],'Candidates listed without claiming root cause'),
+               _make_step(3,'Check commonality, timing, trend, and available measurements','analysis',['step:1'],'Evidence compared across candidates'),
+               _make_step(4,'Choose the highest-information next check','verification',['step:2','step:3'],'Next diagnostic test selected'),
+               _make_step(5,'Confirm root cause before corrective action','decision',['step:4'],'Cause supported by confirming evidence')]
+    elif domain=='vision':
+        steps=[_make_step(1,'Validate and inspect the visual input','vision',['artifact'],'Visual evidence extracted'),
+               _make_step(2,'Separate visible evidence from interpretation','evidence',['step:1'],'Evidence/unknowns separated'),
+               _make_step(3,'Answer the user request from verified visual evidence','reasoning',['step:2'],'Visual answer produced')]
+    elif domain=='math':
+        steps=[_make_step(1,'Identify known values and requested result','math',[],'Inputs identified'),
+               _make_step(2,'Compute and verify the result','math',['step:1'],'Calculation checked')]
+    else:
+        steps=[_make_step(1,'Understand the requested outcome and available context','reasoning',['context'],'Goal understood'),
+               _make_step(2,'Perform the required reasoning or capability work','reasoning',['step:1'],'Core task completed'),
+               _make_step(3,'Verify the result and present the next useful action','verification',['step:2'],'Result checked')]
+    # intent-specific additions
+    if re.search(r'\b(?:ppt|pptx|powerpoint|slides?|report|export)\b',t,re.I) and not any(x['kind']=='report' for x in steps):
+        steps.append(_make_step(len(steps)+1,'Generate the requested report/export','report',[f"step:{len(steps)}"],'Downloadable output created'))
+    return steps
+
+def _sync_plan_fields(state):
+    plan=state.get('plan') or []; idx=state.get('current_step',0)
+    while idx < len(plan) and plan[idx].get('status')=='completed': idx+=1
+    state['current_step']=idx
+    state['pending_step']=plan[idx]['title'] if idx < len(plan) else ''
+    completed=[x['title'] for x in plan if x.get('status')=='completed']
+    state['completed_step']=completed[-1] if completed else state.get('completed_step','')
+    if plan and idx>=len(plan) and state.get('status') not in ('cancelled',): state['status']='completed'
+    return state
+
+_PLAN_FAILURE_RE=re.compile(r"\b(?:error|failed|failure|could not|couldn't|unable|unavailable|missing|required|exception|timeout|invalid|corrupt|not found|hindi.*(?:gumana|available)|aberya)\b",re.I)
+_PLAN_SUCCESS_RE=re.compile(r"\b(?:complete|completed|done|success|generated|created|analy[sz]ed|calculated|verified|ready|identified|found|fixed|resolved|summary|result|pareto|chart|report)\b",re.I)
+
+def plan_dependencies_satisfied(state,step):
+    """Hard dependency validation. skipped dependencies do not count as completed."""
+    plan=state.get('plan') or []
+    for req in step.get('requires') or []:
+        if req in ('context','artifact'): continue
+        if str(req).startswith('step:'):
+            try: rid=int(str(req).split(':',1)[1])
+            except Exception: return False,f"invalid dependency {req}"
+            found=next((x for x in plan if int(x.get('id',-1))==rid),None)
+            if not found or found.get('status')!='completed': return False,f"dependency step {rid} is not completed"
+    if 'artifact' in (step.get('requires') or []) and not state.get('attached_artifact'):
+        return False,'required artifact is missing'
+    return True,'dependencies satisfied'
+
+def validate_plan_step(state,result):
+    """Conservative local validator: do not advance merely because a reply exists."""
+    plan=state.get('plan') or []; idx=state.get('current_step',0)
+    if idx>=len(plan): return {'pass':False,'reason':'no current step','retryable':False}
+    step=plan[idx]; ok,dep_reason=plan_dependencies_satisfied(state,step)
+    if not ok: return {'pass':False,'reason':dep_reason,'retryable':False}
+    text=re.sub(r"\s+"," ",str(result or '')).strip()
+    if not text: return {'pass':False,'reason':'empty result','retryable':True}
+    if _PLAN_FAILURE_RE.search(text): return {'pass':False,'reason':'result contains failure/unavailable evidence','retryable':True}
+    kind=step.get('kind')
+    # Domain-specific minimum evidence rules.
+    if kind in ('file','data','analysis'):
+        has_metric=bool(re.search(r"\b(?:rows?|columns?|count|total|average|mean|median|min|max|%|pareto|downtime|frequency|trend|finding|sheet)\b",text,re.I))
+        if not has_metric: return {'pass':False,'reason':'analysis result lacks measurable findings','retryable':True}
+    elif kind=='visualization':
+        has_visual=bool(re.search(r"\b(?:chart|pareto|plot|graph|heatmap|visual)\b",text,re.I))
+        if not has_visual: return {'pass':False,'reason':'visualization step has no visual/chart evidence','retryable':True}
+    elif kind=='report':
+        has_report=bool(re.search(r"\b(?:report|pptx|powerpoint|docx|xlsx|download|export|summary)\b",text,re.I))
+        if not has_report: return {'pass':False,'reason':'report/export evidence missing','retryable':True}
+    elif kind in ('verification','decision'):
+        has_verify=bool(re.search(r"\b(?:verify|verified|check|evidence|test|pass|confirmed|confidence|unknown|risk)\b",text,re.I))
+        if not has_verify: return {'pass':False,'reason':'verification evidence missing','retryable':True}
+    elif kind in ('code','debug'):
+        has_code=bool(re.search(r"```|\b(?:code|error|bug|function|class|fix|line|traceback|test)\b",text,re.I))
+        if not has_code: return {'pass':False,'reason':'coding/debug evidence missing','retryable':True}
+    elif kind in ('vision','evidence'):
+        has_evidence=bool(re.search(r"\b(?:visible|image|evidence|observ|text|object|unknown|cannot verify)\b",text,re.I))
+        if not has_evidence: return {'pass':False,'reason':'evidence step lacks explicit observations','retryable':True}
+    # General steps accept substantive output unless there is explicit failure evidence.
+    if len(text)<25 and not _PLAN_SUCCESS_RE.search(text): return {'pass':False,'reason':'result too thin to satisfy step','retryable':True}
+    return {'pass':True,'reason':'local validation rules satisfied','retryable':False}
+
+def fail_current_plan_step(state,reason,result=''):
+    plan=state.get('plan') or []; idx=state.get('current_step',0)
+    if idx<len(plan):
+        st=plan[idx]; st['attempts']=int(st.get('attempts') or 0)+1; st['validation']='failed'; st['validation_reason']=reason; st['result']=str(result or '')[:500]
+        st['status']='blocked' if st['attempts']>=int(st.get('max_attempts') or 2) else 'pending'
+        state['plan']=plan; state['status']='blocked' if st['status']=='blocked' else 'active'; state['pending_step']=st['title']
+    return state
+
+def validate_and_apply_plan_result(state,result):
+    v=validate_plan_step(state,result)
+    if v['pass']:
+        plan=state.get('plan') or []; idx=state.get('current_step',0)
+        if idx<len(plan): plan[idx]['validation']='passed'; plan[idx]['validation_reason']=v['reason']; plan[idx]['attempts']=int(plan[idx].get('attempts') or 0)+1
+        state['plan']=plan
+        return complete_current_plan_step(state,result),v
+    return fail_current_plan_step(state,v['reason'],result),v
+
+def complete_current_plan_step(state,result=''):
+    plan=state.get('plan') or []; idx=state.get('current_step',0)
+    if idx < len(plan):
+        plan[idx]['status']='completed'; plan[idx]['result']=str(result or '')[:500]
+        state['plan']=plan; state['current_step']=idx+1
+    return _sync_plan_fields(state)
+
+def task_plan_text(state):
+    plan=state.get('plan') or []
+    if not plan: return 'No explicit plan yet.'
+    lines=[]
+    for i,st in enumerate(plan):
+        icon='✅' if st.get('status')=='completed' else ('↪️' if st.get('status')=='deferred' else ('⛔' if st.get('status')=='blocked' else ('➡️' if i==state.get('current_step',0) else '▫️')))
+        lines.append(f"{icon} {i+1}. {st['title']} [{st['kind']}] — validation: {st.get('validation','pending')}" + (f" ({st.get('validation_reason')})" if st.get('validation_reason') else ''))
+    return '\n'.join(lines)
+
+# ==================================================
+# ↩️ V6.5.7 PLAN ROLLBACK
+# Checkpoint-and-restore for task plans. Rollback preserves audit history and never erases chat.
+# ==================================================
+_ROLLBACK_MAX_CHECKPOINTS=12
+
+def _checkpoint_snapshot(state,label=''):
+    import copy
+    return {
+        'id': f"cp-{int(time.time()*1000)}",
+        'label': label or f"plan-v{state.get('plan_version',0)}-step-{state.get('current_step',0)+1}",
+        'at': datetime.now().isoformat(timespec='seconds'),
+        'active_task': state.get('active_task',''), 'status': state.get('status','idle'),
+        'completed_step': state.get('completed_step',''), 'pending_step': state.get('pending_step',''),
+        'attached_artifact': state.get('attached_artifact',''), 'last_result': state.get('last_result',''),
+        'domain': state.get('domain','conversation'), 'confidence': state.get('confidence','none'),
+        'plan': copy.deepcopy(state.get('plan') or []), 'current_step': int(state.get('current_step') or 0),
+        'plan_version': int(state.get('plan_version') or 0), 'replans': int(state.get('replans') or 0),
+        'last_failure': state.get('last_failure','')
+    }
+
+def create_plan_checkpoint(state,label=''):
+    """Save bounded checkpoint. Deduplicate identical plan-version/current-step snapshots."""
+    cps=list(state.get('checkpoints') or [])
+    snap=_checkpoint_snapshot(state,label)
+    if cps and cps[-1].get('plan_version')==snap['plan_version'] and cps[-1].get('current_step')==snap['current_step'] and cps[-1].get('plan')==snap['plan']:
+        return state,cps[-1]
+    cps.append(snap); state['checkpoints']=cps[-_ROLLBACK_MAX_CHECKPOINTS:]
+    return state,snap
+
+def list_plan_checkpoints(state):
+    cps=state.get('checkpoints') or []
+    if not cps: return 'No rollback checkpoints yet.'
+    return '\n'.join(f"{i+1}. {c['id']} — {c['label']} — {c['at']} — step {c['current_step']+1}" for i,c in enumerate(cps[-8:]))
+
+# ==================================================
+# 🔐 V6.6 CENTRAL ACTION AUTHORIZATION GATE
+# propose → impact → authorize → execute → verify
+# ==================================================
+_AUTH_TTL=300
+_AUTH_YES_RE=re.compile(r"^\s*(?:authorize|authorized|confirm action|approve|approved|yes proceed|proceed action|go ahead action|oo authorize|sige authorize)\s*[!?.]*$",re.I)
+_AUTH_NO_RE=re.compile(r"^\s*(?:deny|reject action|cancel action|do not proceed|don't proceed|hindi authorize|wag ituloy|huwag ituloy)\s*[!?.]*$",re.I)
+
+def action_risk(action_type):
+    return {'rollback':'medium','file_replace':'high','file_delete':'high','deploy':'high','external_send':'high','system_change':'high','code_execute':'medium','install':'medium'}.get(action_type,'medium')
+
+def action_requires_authorization(action_type):
+    return action_type in {'rollback','file_replace','file_delete','deploy','external_send','system_change','code_execute','install'}
+
+def propose_action(state,action_type,summary,impact='',payload=None,reversible=False,verify=''):
+    """Create one expiring authorization proposal. Secrets/tokens must never be placed in payload."""
+    proposal={'id':f"act-{int(time.time()*1000)}",'type':action_type,'summary':summary,'impact':impact or 'Changes task/system state',
+              'risk':action_risk(action_type),'reversible':bool(reversible),'verify':verify or 'Verify the requested outcome after execution',
+              'payload':payload or {},'requested_at':time.time(),'expires_at':time.time()+_AUTH_TTL,'verification_status':'pending','verification_result':'','pre_state':{}}
+    state['pending_action']=proposal
+    return state,proposal
+
+def pending_action_valid(state):
+    pa=state.get('pending_action')
+    if not isinstance(pa,dict): return False
+    if time.time()>float(pa.get('expires_at') or 0): state['pending_action']=None; return False
+    return True
+
+def authorization_prompt(proposal):
+    rev='reversible' if proposal.get('reversible') else 'may not be automatically reversible'
+    return (f"🔐 **Authorization required**\n- Action: **{proposal.get('summary')}**\n- Risk: **{str(proposal.get('risk','medium')).upper()}**\n"
+            f"- Impact: {proposal.get('impact')}\n- Recovery: {rev}\n- Verification: {proposal.get('verify')}\n\n"
+            "Reply **authorize** to proceed or **cancel action** to stop it. Authorization expires in 5 minutes.")
+
+def record_authorization(state,proposal,decision,outcome=''):
+    hist=list(state.get('authorization_history') or [])
+    hist.append({'at':datetime.now().isoformat(timespec='seconds'),'id':proposal.get('id'),'type':proposal.get('type'),'summary':proposal.get('summary'),'decision':decision,'outcome':outcome})
+    state['authorization_history']=hist[-20:]
+    return state
+
+def authorization_history_text(state):
+    hist=state.get('authorization_history') or []
+    if not hist: return 'No authorization decisions yet.'
+    return '\n'.join(f"{i+1}. {h['at']} — {h['decision']} — {h['summary']} — {h.get('outcome','')}" for i,h in enumerate(hist[-8:]))
+
+_SHA256_AUDIT_MAX=100
+
+def append_sha256_audit(state,event,path='',digest=None,size=None,action_id='',status='observed',note=''):
+    """Append a bounded, non-secret integrity audit record to the task ledger."""
+    hist=list(state.get('sha256_audit') or [])
+    entry={'at':datetime.now().isoformat(timespec='seconds'),'event':event,'file':os.path.basename(path) if path else '',
+           'sha256':normalized_sha256(digest) if digest else None,'size':size,'action_id':action_id or '',
+           'status':status,'note':str(note or '')[:500]}
+    hist.append(entry);state['sha256_audit']=hist[-_SHA256_AUDIT_MAX:]
+    return state,entry
+
+def sha256_audit_text(state,limit=12):
+    hist=state.get('sha256_audit') or []
+    if not hist:return 'No SHA-256 audit entries yet.'
+    lines=[]
+    for i,e in enumerate(hist[-limit:]):
+        digest=e.get('sha256') or 'n/a'; short=(digest[:16]+'…') if len(digest)>16 else digest
+        lines.append(f"{i+1}. {e.get('at')} — {e.get('event')} — {e.get('file') or 'n/a'} — {short} — {e.get('status')}")
+    return '\n'.join(lines)
+
+def audit_integrity_snapshot(state,event,path,action_id='',note=''):
+    snap=file_integrity_snapshot(path)
+    state,_=append_sha256_audit(state,event,path,snap.get('sha256'),snap.get('size'),action_id,
+                                'hashed' if snap.get('sha256') else 'hash-unavailable',note)
+    return state,snap
+
+def sha256_file(path,chunk_size=1024*1024):
+    """Return lowercase SHA-256 hex digest for a regular file, or None if unavailable."""
+    if not path or not os.path.isfile(path): return None
+    h=hashlib.sha256()
+    try:
+        with open(path,'rb') as f:
+            while True:
+                chunk=f.read(chunk_size)
+                if not chunk: break
+                h.update(chunk)
+        return h.hexdigest()
+    except (OSError,PermissionError) as e:
+        print(f"⚠️ SHA-256 read failed for {path}: {e}"); return None
+
+def normalized_sha256(value):
+    v=re.sub(r'[^0-9a-fA-F]','',str(value or '')).lower()
+    return v if len(v)==64 else None
+
+def file_integrity_snapshot(path):
+    return {'path':path or '', 'exists':bool(path and os.path.isfile(path)),
+            'size':os.path.getsize(path) if path and os.path.isfile(path) else None,
+            'sha256':sha256_file(path)}
+
+def capture_action_pre_state(state,proposal):
+    """Capture only the minimum local state needed to verify the registered action."""
+    typ=proposal.get('type')
+    if typ=='rollback':
+        return {'plan_version':state.get('plan_version'),'current_step':state.get('current_step'),'pending_step':state.get('pending_step'),
+                'rollback_count':state.get('rollback_count',0),'checkpoint':(proposal.get('payload') or {}).get('checkpoint')}
+    if typ in ('file_replace','file_delete'):
+        target=(proposal.get('payload') or {}).get('path','')
+        return file_integrity_snapshot(target)
+    if typ in ('deploy','system_change','install','code_execute','external_send'):
+        return {'task_plan_version':state.get('plan_version'),'status':state.get('status')}
+    return {'task_plan_version':state.get('plan_version')}
+
+def verify_action_result(state,proposal,executor_ok,outcome=''):
+    """Verification is action-specific and conservative. Unknown executors never verify as successful."""
+    typ=proposal.get('type'); pre=proposal.get('pre_state') or {}; payload=proposal.get('payload') or {}
+    if not executor_ok:
+        return {'verified':False,'status':'failed','reason':outcome or 'executor did not report success'}
+    if typ=='rollback':
+        expected=payload.get('checkpoint'); hist=state.get('rollback_history') or []
+        last=hist[-1] if hist else {}
+        checks=[state.get('rollback_count',0)>int(pre.get('rollback_count') or 0), last.get('checkpoint')==expected, state.get('plan_version')!=pre.get('plan_version')]
+        return {'verified':all(checks),'status':'passed' if all(checks) else 'failed','reason':'rollback checkpoint, counter, and plan-version checks passed' if all(checks) else 'rollback post-state did not match the authorized checkpoint'}
+    if typ=='file_replace':
+        target=payload.get('path',''); post=file_integrity_snapshot(target); expected_size=payload.get('expected_size'); expected_hash=normalized_sha256(payload.get('expected_sha256'))
+        state,_=append_sha256_audit(state,'post-file-replace',target,post.get('sha256'),post.get('size'),proposal.get('id',''),'captured','post-action integrity snapshot')
+        if not post['exists'] or not post['sha256']:
+            return {'verified':False,'status':'failed','reason':'replacement file missing or SHA-256 could not be computed'}
+        if expected_size is not None and post['size']!=int(expected_size):
+            return {'verified':False,'status':'failed','reason':f"size mismatch: expected {int(expected_size)} bytes, got {post['size']}"}
+        if expected_hash and post['sha256']!=expected_hash:
+            state,_=append_sha256_audit(state,'sha256-compare',target,post['sha256'],post.get('size'),proposal.get('id',''),'mismatch',f'expected {expected_hash}')
+            return {'verified':False,'status':'failed','reason':f"SHA-256 mismatch: expected {expected_hash}, got {post['sha256']}"}
+        if expected_hash:
+            state,_=append_sha256_audit(state,'sha256-compare',target,post['sha256'],post.get('size'),proposal.get('id',''),'verified','matched expected SHA-256')
+            return {'verified':True,'status':'passed','reason':f"SHA-256 verified: {post['sha256']}"}
+        # When no expected digest exists, verify that a true replacement occurred by comparing pre/post digests.
+        pre_hash=pre.get('sha256')
+        changed=(not pre.get('exists')) or (pre_hash and pre_hash!=post['sha256'])
+        return {'verified':bool(changed),'status':'passed' if changed else 'unverified','reason':f"replacement digest: {post['sha256']}" if changed else 'file exists, but no expected digest was supplied and content hash did not change'}
+    if typ=='file_delete':
+        target=payload.get('path',''); ok=bool(target) and not os.path.exists(target)
+        before=pre.get('sha256') or 'unavailable'
+        state,_=append_sha256_audit(state,'post-file-delete',target,None,None,proposal.get('id',''),'deleted' if ok else 'still-exists',f'pre-delete SHA-256: {before}')
+        return {'verified':ok,'status':'passed' if ok else 'failed','reason':f"target no longer exists; pre-delete SHA-256 was {before}" if ok else 'target still exists after delete attempt'}
+    # Gated but unregistered action families require a dedicated executor + verifier before they may claim success.
+    return {'verified':False,'status':'unverified','reason':f'no action-specific verifier is registered for {typ}'}
+
+def verification_text(proposal,verification):
+    icon='✅' if verification.get('verified') else '⚠️'
+    return (f"{icon} **Action verification**\n- Action: **{proposal.get('summary')}**\n- Verification: **{str(verification.get('status','unknown')).upper()}**\n"
+            f"- Result: {verification.get('reason','No verification result')}\n"
+            + ("- State change confirmed against the authorized action." if verification.get('verified') else "- Purple Falcon will not claim the action succeeded without verification."))
+
+def execute_authorized_action(state,proposal,request=None):
+    """Dispatch only explicitly implemented safe state operations. Never execute arbitrary payload commands."""
+    typ=proposal.get('type'); payload=proposal.get('payload') or {}
+    proposal['pre_state']=capture_action_pre_state(state,proposal)
+    if typ in ('file_replace','file_delete'):
+        pre=proposal['pre_state']; state,_=append_sha256_audit(state,'pre-action',pre.get('path',''),pre.get('sha256'),pre.get('size'),proposal.get('id',''),'captured',proposal.get('summary',''))
+    if typ=='rollback':
+        state,info=rollback_plan(state,payload.get('checkpoint','previous'),proposal.get('summary') or 'authorized rollback')
+        ok=bool(info.get('changed')); outcome=f"rollback {'applied' if ok else 'failed'}: {info.get('label') or info.get('reason')}"
+        verification=verify_action_result(state,proposal,ok,outcome)
+        proposal['verification_status']=verification['status']; proposal['verification_result']=verification['reason']
+        return state,bool(ok and verification['verified']),outcome,verification
+    # Other sensitive action types are gated now, but actual external executors must register deliberately later.
+    verification=verify_action_result(state,proposal,False,f"No registered executor for {typ}")
+    proposal['verification_status']=verification['status']; proposal['verification_result']=verification['reason']
+    return state,False,f"No registered executor for {typ}; authorization recorded but nothing was executed",verification
+
+def resolve_pending_authorization(state,message,request=None):
+    if not pending_action_valid(state): return state,None
+    t=(message or '').strip(); proposal=dict(state['pending_action'])
+    if _AUTH_NO_RE.match(t):
+        state['pending_action']=None; state=record_authorization(state,proposal,'denied','cancelled by user')
+        return state,"Okay 💜🦅. **Action cancelled.** Nothing was changed."
+    if _AUTH_YES_RE.match(t):
+        state['pending_action']=None
+        state,ok,outcome,verification=execute_authorized_action(state,proposal,request)
+        outcome_full=outcome+' | verification: '+verification.get('status','unknown')+' - '+verification.get('reason','')
+        state=record_authorization(state,proposal,'authorized',outcome_full)
+        return state,((f"✅ **Authorized action completed and verified.** {outcome}\n\n{verification_text(proposal,verification)}") if ok
+                      else f"⚠️ **Authorization accepted, but success was not verified.** {outcome}\n\n{verification_text(proposal,verification)}")
+    return state,None
+
+_ROLLBACK_CONFIRM_TTL=300
+_ROLLBACK_YES_RE=re.compile(r"^\s*(?:yes|y|confirm|confirmed|proceed|go ahead|oo|opo|sige|ituloy|yes rollback|confirm rollback)\s*[!?.]*$",re.I)
+_ROLLBACK_NO_RE=re.compile(r"^\s*(?:no|n|cancel|stop|hindi|wag|huwag|cancel rollback|do not rollback|don't rollback)\s*[!?.]*$",re.I)
+
+def request_rollback_confirmation(state,target='previous',reason='user requested rollback'):
+    cps=list(state.get('checkpoints') or [])
+    if not cps: return state,{'requested':False,'reason':'no rollback checkpoint available'}
+    snap=cps[-1] if target in ('previous','last','back',None) else next((c for c in reversed(cps) if c.get('id')==target or c.get('label')==target),None)
+    if snap is None: return state,{'requested':False,'reason':f'checkpoint not found: {target}'}
+    current=state.get('pending_step') or 'none'; restore=snap.get('pending_step') or 'none'
+    state['pending_rollback']={'checkpoint':snap['id'],'label':snap.get('label'),'reason':reason,'requested_at':time.time(),'expires_at':time.time()+_ROLLBACK_CONFIRM_TTL,
+                               'current_plan_version':state.get('plan_version',0),'current_step':state.get('current_step',0),'current_target':current,
+                               'restore_plan_version':snap.get('plan_version',0),'restore_step':snap.get('current_step',0),'restore_target':restore}
+    return state,{'requested':True,'checkpoint':snap['id'],'label':snap.get('label'),'current_target':current,'restore_target':restore}
+
+def pending_rollback_valid(state):
+    pr=state.get('pending_rollback')
+    if not isinstance(pr,dict): return False
+    if time.time()>float(pr.get('expires_at') or 0): state['pending_rollback']=None; return False
+    return True
+
+def confirm_pending_rollback(state,approve=True):
+    if not pending_rollback_valid(state): return state,{'changed':False,'reason':'no active rollback confirmation'}
+    pr=dict(state['pending_rollback']); state['pending_rollback']=None
+    if not approve: return state,{'changed':False,'cancelled':True,'reason':'rollback cancelled by user'}
+    return rollback_plan(state,pr['checkpoint'],pr.get('reason') or 'confirmed rollback')
+
+def rollback_confirmation_text(info):
+    return ("↩️ **Rollback confirmation required**\n"
+            f"- Restore checkpoint: **{info.get('label')}**\n"
+            f"- Current target: **{info.get('current_target')}**\n"
+            f"- Restored target: **{info.get('restore_target')}**\n\n"
+            "This changes the active plan state but keeps the chat and audit history. Reply **confirm rollback** to continue, or **cancel rollback** to keep the current plan.")
+
+def rollback_plan(state,target='previous',reason='user requested rollback'):
+    """Restore plan/task fields from a checkpoint but preserve rollback/replan audit trails."""
+    import copy
+    cps=list(state.get('checkpoints') or [])
+    if not cps: return state,{'changed':False,'reason':'no rollback checkpoint available'}
+    if target in ('previous','last','back',None):
+        snap=cps[-1]
+    else:
+        snap=next((c for c in reversed(cps) if c.get('id')==target or c.get('label')==target),None)
+        if snap is None: return state,{'changed':False,'reason':f'checkpoint not found: {target}'}
+    before={'plan_version':state.get('plan_version'),'current_step':state.get('current_step'),'pending_step':state.get('pending_step'),'status':state.get('status')}
+    for key in ('active_task','status','completed_step','pending_step','attached_artifact','last_result','domain','confidence','plan','current_step','plan_version','replans','last_failure'):
+        if key in snap: state[key]=copy.deepcopy(snap[key])
+    # A rollback creates a new version while recording the source version restored.
+    restored_version=int(state.get('plan_version') or 0)
+    state['plan_version']=max(restored_version,int(before.get('plan_version') or 0))+1
+    state['status']='active' if state.get('plan') and state.get('status')!='cancelled' else state.get('status','idle')
+    state['pending_rollback']=None
+    state['rollback_count']=int(state.get('rollback_count') or 0)+1
+    hist=list(state.get('rollback_history') or [])
+    hist.append({'at':datetime.now().isoformat(timespec='seconds'),'checkpoint':snap['id'],'label':snap.get('label'),'reason':reason,'from':before,'restored_plan_version':restored_version,'new_plan_version':state['plan_version']})
+    state['rollback_history']=hist[-10:]
+    # Keep checkpoint ledger intact, including the restored snapshot for audit/repeatability.
+    state['checkpoints']=cps
+    state=_sync_plan_fields(state)
+    return state,{'changed':True,'checkpoint':snap['id'],'label':snap.get('label'),'new_plan_version':state['plan_version']}
+
+def rollback_summary(state):
+    hist=state.get('rollback_history') or []
+    if not hist: return 'No plan rollbacks yet.'
+    return '\n'.join(f"{i+1}. {h['at']} — restored {h['label']} ({h['checkpoint']}) — {h['reason']}" for i,h in enumerate(hist[-5:]))
+
+# ==================================================
+# 🔄 V6.5.6 AUTOMATIC RE-PLANNING
+# Validation failure changes the route/step; it does not blindly repeat the same operation.
+# ==================================================
+_REPLAN_MAX=3
+
+def _new_replan_step(title,kind,requires,done_when):
+    return _make_step(0,title,kind,requires,done_when)
+
+def choose_replan_strategy(state,reason,result=''):
+    """Map failure evidence to a distinct recovery strategy without external/main-brain dependence."""
+    plan=state.get('plan') or []; idx=state.get('current_step',0)
+    step=plan[idx] if idx<len(plan) else {}; kind=step.get('kind','reasoning'); r=(reason or '').lower(); text=(result or '').lower()
+    joined=r+' '+text
+    if 'artifact' in joined or 'missing' in joined or 'not found' in joined or 'corrupt' in joined:
+        return {'strategy':'restore_input','step':_new_replan_step('Verify or restore the required input/artifact','verification',[],'Required input is available and readable')}
+    if kind in ('file','data','analysis'):
+        return {'strategy':'decompose_analysis','step':_new_replan_step('Run a smaller deterministic data check before deep analysis','data',step.get('requires') or [],'Basic schema/metrics succeed')}
+    if kind=='visualization':
+        return {'strategy':'text_first_visual','step':_new_replan_step('Verify chart source values before regenerating the visual','data',step.get('requires') or [],'Chart-driving values are verified')}
+    if kind=='report':
+        return {'strategy':'report_prereq','step':_new_replan_step('Verify report inputs and export prerequisites','verification',step.get('requires') or [],'Report inputs and export path are ready')}
+    if kind in ('code','debug'):
+        return {'strategy':'isolate_code','step':_new_replan_step('Reduce the failure to a minimal reproducible code path','debug',step.get('requires') or [],'Failure isolated with testable evidence')}
+    if kind in ('vision','evidence'):
+        return {'strategy':'evidence_fallback','step':_new_replan_step('Re-validate the attachment and extract only verifiable evidence','evidence',step.get('requires') or [],'Usable evidence is extracted or limitation is proven')}
+    if kind in ('verification','decision'):
+        return {'strategy':'gather_evidence','step':_new_replan_step('Gather the missing evidence required for verification','evidence',step.get('requires') or [],'Verification evidence is present')}
+    return {'strategy':'decompose_reasoning','step':_new_replan_step('Split the current step into a smaller verifiable subproblem','reasoning',step.get('requires') or [],'Smaller subproblem has a checkable result')}
+
+def automatic_replan(state,reason,result=''):
+    """Insert an alternate recovery step before the failed step and preserve all failure evidence."""
+    if int(state.get('replans') or 0)>=_REPLAN_MAX:
+        state['status']='blocked'; state['last_failure']=reason; return _sync_plan_fields(state),{'changed':False,'reason':'replan limit reached'}
+    plan=state.get('plan') or []; idx=state.get('current_step',0)
+    if idx>=len(plan): return state,{'changed':False,'reason':'no current step'}
+    state, checkpoint = create_plan_checkpoint(state, f"before-replan-{state.get('replans',0)+1}")
+    plan=state.get('plan') or []; idx=state.get('current_step',0); failed=plan[idx]
+    choice=choose_replan_strategy(state,reason,result); recovery=choice['step']
+    failed['status']='deferred'; failed['validation']='failed'; failed['validation_reason']=reason; failed['result']=str(result or '')[:500]
+    recovery['id']=max([int(x.get('id',0)) for x in plan]+[0])+1
+    recovery['origin']='auto-replan'; recovery['recovery_for']=failed.get('id'); recovery['strategy']=choice['strategy']
+    plan.insert(idx,recovery)
+    state['plan']=plan; state['current_step']=idx; state['status']='active'; state['pending_step']=recovery['title']; state['replans']=int(state.get('replans') or 0)+1; state['plan_version']=int(state.get('plan_version') or 0)+1; state['last_failure']=reason
+    hist=list(state.get('replan_history') or [])
+    hist.append({'at':datetime.now().isoformat(timespec='seconds'),'failed_step':failed.get('title'),'reason':reason,'strategy':choice['strategy'],'inserted_step':recovery['title']})
+    state['replan_history']=hist[-10:]
+    return _sync_plan_fields(state),{'changed':True,'strategy':choice['strategy'],'step':recovery['title']}
+
+def replan_summary(state):
+    hist=state.get('replan_history') or []
+    if not hist: return 'No automatic re-plans yet.'
+    return '\n'.join(f"{i+1}. {h['failed_step']} → {h['strategy']} → {h['inserted_step']} ({h['reason']})" for i,h in enumerate(hist[-5:]))
+
+def update_task_state_from_user(message,paths=None,request=None):
+    """Update ledger from explicit task language; do not let acknowledgements overwrite active work."""
+    t=re.sub(r'\s+',' ',(message or '')).strip(); paths=paths or []; state=load_task_state(request)
+    if _TASK_NEW_RE.search(t): state=default_task_state()
+    if _TASK_CANCEL_RE.search(t): state.update(status='cancelled',pending_step=''); return save_task_state(state,request)
+    if _TASK_DONE_RE.search(t) and state['active_task']:
+        state.update(status='completed',completed_step=state.get('pending_step') or t,pending_step=''); return save_task_state(state,request)
+    if paths:
+        state['attached_artifact']=', '.join(os.path.basename(x) for x in paths[:5])
+    if _LOCAL_SMALL_RE.match(t) or _LOCAL_CONFIRM_RE.match(t) or _LOCAL_NEGATE_RE.match(t): return save_task_state(state,request)
+    resolution=resolve_local_context(t,request)
+    continuation=bool(_TASK_NEXT_RE.search(t)) and len(t.split())<=10
+    new_task=bool(paths or _TASK_REQUEST_RE.search(t)) and not continuation
+    if new_task:
+        domain=_task_domain(t,paths)
+        state.update(active_task=t or state['active_task'],status='active',domain=domain,confidence='high',plan=build_task_plan(t,domain,paths),current_step=0,plan_version=int(state.get('plan_version') or 0)+1)
+        state=_sync_plan_fields(state)
+        state, _cp = create_plan_checkpoint(state, 'initial-plan')
+    elif continuation and state['active_task']:
+        state['status']='active'; state['confidence']='high'
+    elif resolution.get('resolved') and state['active_task']:
+        state['domain']=resolution.get('domain') or state['domain']; state['confidence']=resolution.get('confidence') or state['confidence']
+    return save_task_state(state,request)
+
+def update_task_state_from_result(reply,request=None):
+    state=load_task_state(request)
+    if not state.get('active_task'): return state
+    text=re.sub(r'\s+',' ',str(reply or '')).strip()
+    if text:
+        state['last_result']=text[:900]
+        if state.get('plan'):
+            state, validation = validate_and_apply_plan_result(state,text)
+            if not validation['pass']:
+                print(f"⚠️ Task plan validation failed: {validation['reason']}")
+                # Re-plan immediately when validation fails, but never loop forever.
+                state, replanned = automatic_replan(state, validation['reason'], text)
+                if replanned.get('changed'):
+                    print(f"🔄 Automatic re-plan: {replanned['strategy']} -> {replanned['step']}")
+        else:
+            state['completed_step']=state.get('pending_step') or state.get('completed_step','')
+            state['pending_step']=''
+        if state.get('status') not in ('completed','cancelled') and state.get('pending_step'): state['status']='active'
+    return save_task_state(state,request)
+
+def task_state_note(request=None):
+    st=load_task_state(request)
+    if not st.get('active_task'): return ''
+    return ("[Purple Falcon Task State]\n"
+            f"Active task: {st['active_task']}\nStatus: {st['status']}\nDomain: {st['domain']}\n"
+            f"Completed step: {st['completed_step'] or 'none'}\nPending step: {st['pending_step'] or 'none'}\n"
+            f"Attached artifact: {st['attached_artifact'] or 'none'}\nLast result: {st['last_result'] or 'none'}\n"
+            f"Plan:\n{task_plan_text(st)}\n"
+            f"Re-plans used: {st.get('replans',0)}/{_REPLAN_MAX}\nRe-plan history:\n{replan_summary(st)}\n"
+            f"Rollbacks: {st.get('rollback_count',0)}\nRollback history:\n{rollback_summary(st)}\n"
+            f"Pending rollback confirmation: {st.get('pending_rollback') or 'none'}\n"
+            f"Pending action authorization: {st.get('pending_action') or 'none'}\nAuthorization history:\n{authorization_history_text(st)}\n"
+            f"SHA-256 audit entries: {len(st.get('sha256_audit') or [])}\nSHA-256 audit:\n{sha256_audit_text(st,6)}\n"
+            f"Transfer hashes: {len(st.get('transfer_hashes') or {})}\nTransfer integrity:\n{transfer_integrity_text(st)}\n"
+            f"Hash retries: {len(st.get('hash_retry_history') or [])}\nHash retry history:\n{hash_retry_history_text(st,6)}")
+
+def task_state_local_reply(message,request=None):
+    st=load_task_state(request); t=(message or '').strip()
+    if not st.get('active_task'): return None
+    if re.search(r"\b(?:show plan|task plan|ano plan|steps natin|mga step|plan natin)\b",t,re.I):
+        return f"📋 **Task plan: {st['active_task']}**\n\n{task_plan_text(st)}"
+    if _TASK_NEXT_RE.search(t) and len(t.split())<=10:
+        st=_sync_plan_fields(st); save_task_state(st,request)
+        if st.get('status')=='completed': return f"✅ Tapos na ang explicit plan para sa **{st['active_task']}**. Pwede tayong mag-verify, gumawa ng bagong task, o magdagdag ng follow-up."
+        if st.get('status')=='blocked':
+            cur=(st.get('plan') or [])[st.get('current_step',0)] if st.get('plan') and st.get('current_step',0)<len(st.get('plan')) else {}
+            return f"⛔ Hindi ako mag-aadvance. **{cur.get('title','Current step')}** is blocked because: **{cur.get('validation_reason','validation failed')}**. Kailangan muna nating ayusin o palitan ang approach sa step na ito."
+        return (f"Sige 💜🦅. Tuloy tayo sa **Step {st['current_step']+1}: {st['pending_step']}** para sa task **{st['active_task']}**. "
+                "Hindi ko lulundagan ang dependencies ng step; gagamitin ko muna ang required context/result ng mga naunang step.")
+    if re.search(r"\b(?:status ng task|task status|nasaan na tayo|where are we|ano na status|progress)\b",t,re.I):
+        return (f"📋 **Task status**\n- Active: **{st['active_task']}**\n- Status: **{st['status']}**\n- Domain: **{st['domain']}**\n- Artifact: **{st.get('attached_artifact') or 'none'}**\n\n"
+                f"**Plan**\n{task_plan_text(st)}")
+    st, auth_reply = resolve_pending_authorization(st,t,request)
+    if auth_reply is not None:
+        save_task_state(st,request); return auth_reply
+    if re.search(r"\b(?:rollback|roll back|undo plan|undo replan|balik plan|ibalik plan|previous plan)\b",t,re.I) and st.get('plan'):
+        cps=list(st.get('checkpoints') or [])
+        if not cps: return "⛔ Walang rollback checkpoint na available."
+        snap=cps[-1]
+        st,proposal=propose_action(st,'rollback',f"Restore plan checkpoint {snap.get('label')}",
+            impact=f"Active plan will move from '{st.get('pending_step') or 'none'}' to '{snap.get('pending_step') or 'none'}'. Chat and audit history stay intact.",
+            payload={'checkpoint':snap.get('id')},reversible=True,verify='Confirm the restored plan and next target match the selected checkpoint')
+        save_task_state(st,request); return authorization_prompt(proposal)
+    hash_match=re.search(r"\b(?:sha-?256|checksum|file hash|verify hash)\b(?:\s+(?:of|for))?\s*(.*)$",t,re.I)
+    if hash_match:
+        candidate=(hash_match.group(1) or '').strip().strip('"\'')
+        path=candidate if candidate and os.path.isfile(candidate) else ''
+        if not path and st.get('attached_artifact'):
+            # attached_artifact stores display names only; do not invent a filesystem path.
+            return "🔐 I can verify SHA-256 when the actual local file path is available to the File Brain. The task ledger currently has only the attachment name."
+        if path:
+            digest=sha256_file(path)
+            st,_=append_sha256_audit(st,'manual-hash',path,digest,os.path.getsize(path) if os.path.isfile(path) else None,'','verified' if digest else 'hash-unavailable','user requested SHA-256'); save_task_state(st,request)
+            return f"🔐 **SHA-256**\n- File: **{os.path.basename(path)}**\n- Digest: `{digest}`" if digest else "⚠️ SHA-256 could not be computed for that file."
+    if re.search(r"\b(?:hash retry config|sha-?256 retry config|retry count|hash retry count|integrity retry settings)\b",t,re.I):
+        schedule=[hash_backoff_base_delay(i) for i in range(1,max(1,_HASH_RETRY_MAX))]
+        schedule_text=', '.join(f'{x:.2f}s' for x in schedule) if schedule else 'no retry wait'
+        return (f"🔁 **SHA-256 retry configuration**\n- Attempts: **{_HASH_RETRY_MAX}**\n- Initial delay: **{_HASH_RETRY_DELAY:.2f}s**\n"
+                f"- Backoff factor: **{_HASH_BACKOFF_FACTOR:.2f}×**\n- Maximum delay: **{_HASH_BACKOFF_MAX:.2f}s**\n- Jitter: **±{_HASH_JITTER_RATIO*100:.0f}%**\n"
+                f"- Nominal wait schedule: **{schedule_text}** (actual waits are jittered)\n"
+                "- Environment: `PF_HASH_RETRY_COUNT`, `PF_HASH_RETRY_DELAY`, `PF_HASH_BACKOFF_FACTOR`, `PF_HASH_BACKOFF_MAX`, `PF_HASH_JITTER_RATIO`")
+    if re.search(r"\b(?:hash retry|sha-?256 retry|retry history|hash mismatch history)\b",t,re.I):
+        return f"🔁 **SHA-256 retry history**\n{hash_retry_history_text(st)}"
+    if re.search(r"\b(?:transfer hashes|upload hashes|download hashes|transfer integrity|upload integrity|download integrity)\b",t,re.I):
+        return f"🔐 **Upload / Download Integrity**\n{transfer_integrity_text(st)}"
+    if re.search(r"\b(?:sha-?256 audit|checksum audit|hash audit|integrity audit)\b",t,re.I):
+        return f"🔐 **SHA-256 audit log**\n{sha256_audit_text(st)}"
+    if re.search(r"\b(?:authorization status|pending action|action status)\b",t,re.I):
+        return authorization_prompt(st['pending_action']) if pending_action_valid(st) else "🔐 No action is waiting for authorization."
+    if re.search(r"\b(?:authorization history|action authorization history)\b",t,re.I):
+        return f"🔐 **Authorization history**\n{authorization_history_text(st)}"
+    if re.search(r"\b(?:show checkpoints|rollback points|checkpoints|rollback options)\b",t,re.I):
+        return f"↩️ **Rollback checkpoints**\n{list_plan_checkpoints(st)}"
+    if re.search(r"\b(?:rollback history|undo history|history ng rollback)\b",t,re.I):
+        return f"↩️ **Rollback history**\n{rollback_summary(st)}"
+    if re.search(r"\b(?:replan|re-plan|plan again|baguhin plan|alternate plan|alternative plan)\b",t,re.I) and st.get('plan'):
+        idx=st.get('current_step',0); cur=st['plan'][idx] if idx<len(st['plan']) else st['plan'][-1]
+        st,info=automatic_replan(st,cur.get('validation_reason') or 'user requested alternate plan',cur.get('result') or '')
+        save_task_state(st,request)
+        return (f"🔄 **Re-plan applied:** {info.get('strategy','no change')}\nNext step: **{st.get('pending_step') or 'none'}**\n\n{task_plan_text(st)}" if info.get('changed')
+                else f"⛔ Hindi na ako nagdagdag ng bagong route: **{info.get('reason')}**.")
+    if re.search(r"\b(?:replan history|re-plan history|why replan|bakit nag replan)\b",t,re.I):
+        return f"🔄 **Re-plan history**\n{replan_summary(st)}"
+    if re.search(r"\b(?:validate step|check step|verify step|validation status)\b",t,re.I) and st.get('plan'):
+        idx=st.get('current_step',0); cur=st['plan'][idx] if idx<len(st['plan']) else st['plan'][-1]
+        return f"🔎 **Step validation**\n- Step: **{cur['title']}**\n- Status: **{cur.get('status')}**\n- Validation: **{cur.get('validation','pending')}**\n- Reason: **{cur.get('validation_reason') or 'not evaluated yet'}**\n- Attempts: **{cur.get('attempts',0)}/{cur.get('max_attempts',2)}**"
+    if re.search(r"\b(?:skip step|skip this|laktawan)\b",t,re.I) and st.get('plan'):
+        idx=st.get('current_step',0)
+        if idx < len(st['plan']):
+            st, _cp = create_plan_checkpoint(st, 'before-user-skip')
+            st['plan'][idx]['status']='skipped'; st['plan'][idx]['result']='Skipped explicitly by user'; st['current_step']=idx+1; st=_sync_plan_fields(st); save_task_state(st,request)
+            return f"Noted. Nilaktawan ang step at ang next target ay **{st.get('pending_step') or 'plan complete'}**."
+    return None
+
+# ==================================================
 # 💬 RENDER CHAT
 # ==================================================
 _RUN_LANGS = {"python", "py", "python3", "bash", "sh", "shell", "js", "javascript", "node"}
@@ -1521,6 +2178,143 @@ def remember_knowledge(topic, content, source="user", verified=False):
     with open(tmp, "w", encoding="utf-8") as f: json.dump(current[-KNOWLEDGE_MAX_ITEMS:], f, ensure_ascii=False, indent=2)
     os.replace(tmp, KNOWLEDGE_DB_FILE)
     return True
+
+# ==================================================
+# 🧠 V6.5 PURPLE FALCON LOCAL REASONING CORE
+# Deterministic conversational reasoning that remains available without the main LLM.
+# ==================================================
+_LOCAL_WHY_RE=re.compile(r"^\s*(?:bakit|why)\b",re.I)
+_LOCAL_FALCON_REF_RE=re.compile(r"\b(?:ikaw|ka|you|mo|your|purple falcon|falcon)\b",re.I)
+_LOCAL_ABSENT_RE=re.compile(r"\b(?:absent|offline|wala ka|nawawala|di ka available|hindi ka available|lagi kang wala|resting)\b",re.I)
+_LOCAL_FOLLOW_RE=re.compile(r"\b(?:ano nangyari|what happened|bakit ganon|bakit ganyan|paano nangyari|how come|continue|tuloy)\b",re.I)
+_LOCAL_SMALL_RE=re.compile(r"^\s*(?:hi|hello|hey|cool|nice|okay|ok|sige|salamat|thanks?|haha+|lol|talaga|really)[!?. ]*$",re.I)
+_LOCAL_CONFIRM_RE=re.compile(r"^\s*(?:yes|yep|yup|oo|opo|correct|tama|agree|gets|got it|understood|naintindihan ko)[!?. ]*$",re.I)
+_LOCAL_NEGATE_RE=re.compile(r"^\s*(?:no|nope|hindi|ayoko|mali|not that|not this)[!?. ]*$",re.I)
+_LOCAL_RETRY_RE=re.compile(r"\b(?:try again|retry|ulit|subukan ulit|again|one more time)\b",re.I)
+_LOCAL_STATUS_RE=re.compile(r"\b(?:status mo|are you working|gumagana ka|online ka|available ka|ready ka|are you ready)\b",re.I)
+_LOCAL_CAP_RE=re.compile(r"\b(?:ano kaya mo|anong kaya mo|what can you do|skills mo|capabilities mo|your skills|your capabilities)\b",re.I)
+_LOCAL_NAME_RE=re.compile(r"\b(?:ano(?:ng)? (?:ba )?(?:name|pangalan) mo|pangalan mo|what(?:'s| is) your name|who are you|sino ka)\b",re.I)
+_LOCAL_ORIGIN_RE=re.compile(r"\b(?:paano ka (?:nagsimula|nag simula|ginawa)|pano ka (?:nagsimula|nag simula)|saan ka galing|how did you start|how were you created|your origin)\b",re.I)
+_LOCAL_HOW_RE=re.compile(r"\b(?:paano ka gumagana|pano ka gumagana|how do you work|how does purple falcon work)\b",re.I)
+_LOCAL_HELP_RE=re.compile(r"^\s*(?:help|tulong|help me|patulong|pwede patulong|can you help me)\s*[!?.]*$",re.I)
+_LOCAL_CLARIFY_RE=re.compile(r"\b(?:ano ibig sabihin|what do you mean|meaning nito|explain that|paki explain|paki-explain|linawin mo|clarify)\b",re.I)
+_LOCAL_SIMPLE_COMPARE_RE=re.compile(r"\b(?:difference|kaibahan|compare|versus| vs )\b",re.I)
+_LOCAL_FILE_FOLLOW_RE=re.compile(r"\b(?:yung file|that file|excel natin|spreadsheet natin|ppt natin|powerpoint natin|chart natin|pareto natin|analysis natin)\b",re.I)
+_LOCAL_TASK_FOLLOW_RE=re.compile(r"\b(?:next|sunod|ano next|what next|proceed|continue|tuloy|go ahead|okay next)\b",re.I)
+
+# ---- Context Resolution: resolve short references before routing ----
+_CTX_PRONOUN_RE=re.compile(r"\b(?:ito|iyan|yan|yun|yon|yung|niyan|nito|noon|that|this|it|those|these|same one|same file|same thing)\b",re.I)
+_CTX_FILE_RE=re.compile(r"\b(?:file|excel|xlsx|csv|spreadsheet|workbook|ppt|pptx|powerpoint|document|docx|pdf|chart|pareto|report|analysis)\b",re.I)
+_CTX_CODE_RE=re.compile(r"\b(?:code|program|script|function|class|python|javascript|js|error|bug|gpu program)\b",re.I)
+_CTX_MACHINE_RE=re.compile(r"\b(?:machine|motor|pump|bearing|vibration|alarm|abnormality|downtime|oee|fft|rms)\b",re.I)
+_CTX_IMAGE_RE=re.compile(r"\b(?:image|picture|photo|screenshot|larawan|vision)\b",re.I)
+_CTX_CONTINUE_RE=re.compile(r"\b(?:continue|tuloy|next|sunod|proceed|go ahead|ituloy|same)\b",re.I)
+_CTX_NEW_TOPIC_RE=re.compile(r"\b(?:new topic|ibang topic|iba naman|change topic|forget that|kalimutan)\b",re.I)
+
+def _recent_local_context(request=None, limit=16):
+    try:
+        hist=list(load_chat(request).get("messages") or [])
+        if hist and hist[-1].get("role")=="user": hist=hist[:-1]
+        return hist[-limit:]
+    except Exception:
+        return []
+
+def _context_candidates(request=None, limit=24):
+    """Rank recent user turns by recency + task substance + domain hints."""
+    hist=_recent_local_context(request,limit)
+    out=[]
+    for recency,m in enumerate(reversed(hist)):
+        if m.get('role')!='user': continue
+        t=re.sub(r"\s+"," ",str(m.get('text') or '')).strip()
+        if not t or _LOCAL_SMALL_RE.match(t) or _LOCAL_CONFIRM_RE.match(t) or _LOCAL_NEGATE_RE.match(t): continue
+        score=max(1,30-recency*2)
+        if len(t.split())>=4: score+=6
+        if _CTX_FILE_RE.search(t): score+=7
+        if _CTX_CODE_RE.search(t): score+=6
+        if _CTX_MACHINE_RE.search(t): score+=6
+        if _CTX_IMAGE_RE.search(t): score+=5
+        if _CTX_NEW_TOPIC_RE.search(t): score-=20
+        out.append({'text':t[:600],'score':score,'recency':recency})
+    return sorted(out,key=lambda x:(-x['score'],x['recency']))
+
+def _last_substantive_topic(request=None):
+    c=_context_candidates(request)
+    return c[0]['text'][:350] if c else ''
+
+def _context_domain(text):
+    t=text or ''
+    if _CTX_FILE_RE.search(t): return 'file'
+    if _CTX_CODE_RE.search(t): return 'code'
+    if _CTX_MACHINE_RE.search(t): return 'machine'
+    if _CTX_IMAGE_RE.search(t): return 'image'
+    return 'conversation'
+
+def resolve_local_context(message, request=None):
+    """Resolve vague follow-ups like 'yan', 'yung file', 'tuloy natin' to a recent task without an LLM."""
+    t=re.sub(r"\s+"," ",(message or '')).strip()
+    if not t or _CTX_NEW_TOPIC_RE.search(t):
+        return {'resolved':False,'reference':'','domain':'conversation','confidence':'none','reason':'new_or_empty'}
+    candidates=_context_candidates(request)
+    if not candidates:
+        return {'resolved':False,'reference':'','domain':'conversation','confidence':'none','reason':'no_history'}
+    explicit_domain=None
+    if _CTX_FILE_RE.search(t): explicit_domain='file'
+    elif _CTX_CODE_RE.search(t): explicit_domain='code'
+    elif _CTX_MACHINE_RE.search(t): explicit_domain='machine'
+    elif _CTX_IMAGE_RE.search(t): explicit_domain='image'
+    wants_reference=bool(_CTX_PRONOUN_RE.search(t) or _CTX_CONTINUE_RE.search(t) or explicit_domain or len(t.split())<=5)
+    if not wants_reference:
+        return {'resolved':False,'reference':'','domain':'conversation','confidence':'none','reason':'standalone'}
+    ranked=[]
+    for c in candidates:
+        d=_context_domain(c['text']); score=c['score']
+        if explicit_domain and d==explicit_domain: score+=20
+        elif explicit_domain and d!=explicit_domain: score-=5
+        ranked.append((score,c,d))
+    ranked.sort(key=lambda x:-x[0]); top=ranked[0]
+    margin=top[0]-(ranked[1][0] if len(ranked)>1 else 0)
+    confidence='high' if explicit_domain or margin>=8 else ('medium' if margin>=3 else 'low')
+    return {'resolved':confidence!='low','reference':top[1]['text'],'domain':top[2],'confidence':confidence,'reason':'ranked_recent_context'}
+
+def context_resolution_note(message, request=None):
+    r=resolve_local_context(message,request)
+    if not r['resolved']: return ''
+    return f"[Resolved local context]\nDomain: {r['domain']}\nConfidence: {r['confidence']}\nReference: {r['reference']}"
+
+def falcon_local_reason(message, request=None):
+    """Falcon-native deterministic conversation/recovery reasoning, independent of the advanced LLM."""
+    t=re.sub(r"\s+"," ",(message or '')).strip()
+    if not t: return None
+    resolution=resolve_local_context(t, request)
+    topic=resolution['reference'] if resolution['resolved'] else _last_substantive_topic(request)
+    if _LOCAL_SMALL_RE.match(t): return "Sige 💜🦅. Nandito lang ako. Ready ako sa susunod mong gusto nating gawin."
+    if _LOCAL_CONFIRM_RE.match(t): return (f"Gets 💜🦅. Tuloy natin ang **{topic}**." if topic else "Gets 💜🦅. Tuloy tayo.")
+    if _LOCAL_NEGATE_RE.match(t): return "Okay, noted 💜🦅. Hindi ko ipipilit yung previous direction. Sabihin mo lang ang correction o bagong target, doon tayo mag-base."
+    if _LOCAL_HELP_RE.match(t): return "Oo naman 💜🦅. Sabihin mo lang kung ano ang problem o target. Pwede akong tumulong sa troubleshooting, coding, Excel/data analysis, files, images, reports, research, o normal na usapan."
+    if _LOCAL_NAME_RE.search(t): return "Ako si **Purple Falcon** 💜🦅. Falcon na lang kung gusto mo. 😊"
+    if _LOCAL_ORIGIN_RE.search(t): return "Nagsimula ako bilang proyekto para bumuo ng practical at sariling AI assistant na kayang tumulong sa totoong tasks. Habang nade-develop ako, nadagdagan ang local reasoning, memory/context, file analysis, visual workflows, coding, research routing, at reporting. 💜🦅"
+    if _LOCAL_HOW_RE.search(t): return "May sarili akong routing at local reasoning layer 💜🦅. Inuuna kong intindihin ang intent at context, saka ako pumipili ng capability. External information ginagamit ko lang kapag kailangan talaga ng current o verifiable data."
+    if _LOCAL_CAP_RE.search(t): return "Kaya kong tumulong sa **reasoning at troubleshooting, coding, Excel/Pareto at data analysis, files/documents, visual analysis, memory/context, research, at dynamic reports**. 💜🦅"
+    if _LOCAL_STATUS_RE.search(t): return "Nandito ako at active ang local conversation/routing core ko 💜🦅. Kung may advanced capability na pansamantalang unavailable, hindi ibig sabihin na offline ako; gagamitin ko muna ang kaya kong local path."
+    if _LOCAL_FALCON_REF_RE.search(t) and _LOCAL_ABSENT_RE.search(t): return "Hindi naman ako sadyang nawawala 💜🦅. Kapag may advanced capability na pansamantalang unavailable, local reasoning, context, file logic, at routing ko ay dapat manatiling active. Kaya hindi na kita basta itutulak sa random web result."
+    if _LOCAL_RETRY_RE.search(t): return (f"Sige, retry natin 💜🦅. Hawak ko pa ang context ng **{topic}**, kaya hindi natin kailangang magsimula sa umpisa." if topic else "Sige, retry natin 💜🦅. Pananatiliin ko ang current context para hindi tayo magsimula sa umpisa.")
+    if _LOCAL_FILE_FOLLOW_RE.search(t):
+        return (f"Naka-context pa sa akin ang file/data task 💜🦅. Ang tinutukoy mo ay **{topic}**. Mananatili tayo sa File/Data route." if topic else "File/data follow-up ito 💜🦅. Mananatili ito sa File/Data route at hindi mapupunta sa random web search.")
+    if _LOCAL_TASK_FOLLOW_RE.search(t) and len(t.split())<=8:
+        return (f"Sige, tuloy tayo sa **{topic}**. 💜🦅" if topic else "Sige, proceed tayo 💜🦅. Sabihin mo lang ang next step.")
+    if _LOCAL_CLARIFY_RE.search(t) and topic: return f"Ang pinaka-likely na tinutukoy mo ay **{topic}**. Pwede kong linawin iyon gamit ang current context natin; sabihin mo lang kung aling part ang gusto mong himayin."
+    if _LOCAL_WHY_RE.match(t) and _LOCAL_FALCON_REF_RE.search(t): return "Kung tungkol ito sa sarili kong behavior o sa usapan natin, local context muna ang base ko. Hindi ko kailangan mag-web search para ipaliwanag ang sarili kong routing o previous behavior."
+    if _LOCAL_FOLLOW_RE.search(t): return (f"Naka-base ako sa previous context natin: **{topic}**. Local conversation/memory reasoning muna ang route ko para sa follow-up na ito." if topic else "Follow-up ito, kaya local conversation/context reasoning muna ang gagamitin ko at hindi random web search.")
+    # Very short comparison/definition prompts can stay local only when context supplies the subject.
+    if _LOCAL_SIMPLE_COMPARE_RE.search(t) and topic and len(t.split())<=12: return f"May comparison kang tinatanong tungkol sa **{topic}**. Gagamitin ko muna ang context natin; external lookup lang kung humingi ka ng latest/current specification."
+    return None
+
+def falcon_external_needed(message):
+    """External retrieval is opt-in: explicit search/current-world need only."""
+    t=(message or '')
+    explicit=bool(re.search(r"\b(?:search|research|look ?up|find online|web|internet|source|citation|verify online)\b",t,re.I))
+    current=bool(re.search(r"\b(?:latest|today|current|recent|news|weather|price|release|schedule|live|availability)\b",t,re.I))
+    return explicit or current
 
 def offline_reasoning_reply(message):
     """Evidence-first fallback when all LLM APIs/local models fail. No synthetic facts."""
@@ -3108,49 +3902,6 @@ _REASON_RE = re.compile(r'\b(?:why|diagnos|root cause|cause|compare|analy[sz]e|i
 _MACHINE_RE = re.compile(r'\b(?:machine|motor|pump|bearing|vibration|rms|fft|temperature|downtime|oee|alarm|plc|vfd|servo|maintenance)\b', re.I)
 _ACTION_RE = re.compile(r'\b(?:execute|run|delete|remove|write|modify|change|set|send|email|restart|shutdown|deploy|install|control|command)\b', re.I)
 
-# v6.4.2 protected local conversational intents
-_PF_ACK_RE = re.compile(r"^\s*(?:hi|hello|hey|cool|nice|great|okay|ok|sige|salamat|thanks?|thank you|haha+|lol|oh(?:\s+talaga)?|talaga|yes|yup|no|sure)[!?. ]*$", re.I)
-_PF_NAME_RE = re.compile(r"\b(?:ano(?:ng)? (?:ba )?(?:name|pangalan) mo|pangalan mo|what(?:'s| is) your name)\b", re.I)
-_PF_IDENTITY_RE = re.compile(r"\b(?:sino ka|who are you|ano ka)\b", re.I)
-_PF_ORIGIN_RE = re.compile(r"\b(?:paano ka (?:nag ?simula|nagsimula|ginawa)|ikaw paano ka (?:nag ?simula|nagsimula)|ikaw pano ka ba nag simula|ikaw pano kaba nag simula|saan ka galing|how did you start|how were you created|how did you begin|your origin)\b", re.I)
-_PF_PURPOSE_RE = re.compile(r"\b(?:bakit ka ginawa|ano purpose mo|ano goal mo|what is your purpose|why were you created|what is your goal)\b", re.I)
-_PF_CAP_RE = re.compile(r"\b(?:ano kaya mo|anong kaya mo|what can you do|your skills|your capabilities|capabilities mo)\b", re.I)
-_PF_HOW_RE = re.compile(r"\b(?:paano ka gumagana|how do you work|how does purple falcon work|how are you powered|what powers you|what model|which model|what provider|which provider|anong gamit mong ai)\b", re.I)
-_PF_CONTEXT_RE = re.compile(r"\b(?:remember|memory|naalala|natatandaan|kanina|previous|earlier|pinag.?uusapan|anong nangyari|what happened|continue|tuloy)\b", re.I)
-
-def falcon_local_intent(message):
-    t=(message or '').strip()
-    if _PF_ACK_RE.match(t): return 'ack'
-    if _PF_NAME_RE.search(t): return 'name'
-    if _PF_IDENTITY_RE.search(t): return 'identity'
-    if _PF_ORIGIN_RE.search(t): return 'origin'
-    if _PF_PURPOSE_RE.search(t): return 'purpose'
-    if _PF_CAP_RE.search(t): return 'capabilities'
-    if _PF_HOW_RE.search(t): return 'how'
-    if len(t.split()) <= 24 and _PF_CONTEXT_RE.search(t): return 'context'
-    return None
-
-def falcon_local_response(intent):
-    if intent=='name': return "Ako si **Purple Falcon** 💜🦅. Falcon na lang kung gusto mo. 😊"
-    if intent=='identity': return "Ako si **Purple Falcon** 💜🦅, AI assistant na kasama mo sa analysis, coding, troubleshooting, files, research, at normal na usapan. Sabihin mo lang kung ano ang gusto mong gawin natin."
-    if intent=='origin': return ("Nagsimula ako bilang isang idea na gumawa ng sariling AI assistant na mas personal, practical, at useful sa totoong tasks. 💜🦅\n\n"
-        "Habang nade-develop ako, nadagdagan ako ng kakayahan sa reasoning, coding, file at Excel analysis, visual analysis, research, memory, at reporting. "
-        "Ang goal ko ngayon ay maintindihan muna ang kailangan mo, piliin ang tamang capability, at tulungan kang matapos ang task nang maayos.\n\n"
-        "**Ako si Purple Falcon, unti-unting binubuo at pinapahusay para maging mas dependable na AI assistant.** 😊")
-    if intent=='purpose': return ("Ginawa ako para maging **practical na AI assistant**, hindi lang pang-chat. 💜🦅 Tinutulungan kitang mag-solve ng problems, mag-code, mag-analyze ng files at data, mag-troubleshoot, gumawa ng reports, at mag-research kapag kailangan. "
-        "Goal ko na maging consistent, useful, at madaling kausap habang ginagawa natin ang actual task.")
-    if intent=='capabilities': return ("Marami tayong pwedeng gawin 💜🦅: **reasoning at troubleshooting, coding, Excel/data analysis at Pareto, file/document review, visual analysis, research, memory/context, at dynamic reporting.** "
-        "Sabihin mo lang ang target mo, ako na ang pipili ng tamang capability para doon.")
-    if intent=='how': return ("Ako si **Purple Falcon** 💜🦅. May sarili akong capability-routing system na pumipili kung anong kakayahan ang pinakaangkop sa task mo, gaya ng reasoning, visual analysis, files, coding, o research. "
-        "Hindi mo kailangang isipin ang technical configuration sa likod. Sabihin mo lang kung ano ang kailangan mo, ako na ang bahalang pumili ng tamang paraan. 😊")
-    if intent=='ack': return "Sige 💜🦅. Ready ako sa next mo."
-    return None
-
-def falcon_web_allowed(message):
-    """Hard lock: local/meta conversation never becomes a web query, even after provider failure."""
-    return falcon_local_intent(message) is None
-
-
 
 def reasoning_plan(message, paths=None, coding_request=False):
     """Deterministic routing plan. The LLM reasons inside the selected lane, not about permissions."""
@@ -3168,6 +3919,7 @@ def reasoning_plan(message, paths=None, coding_request=False):
     plan['needs_vision'] = bool(paths) and any(str(p).lower().endswith(('.png','.jpg','.jpeg','.webp','.gif','.bmp')) for p in paths)
     plan['machine_context'] = bool(_MACHINE_RE.search(text))
     plan['action_requested'] = bool(_ACTION_RE.search(text))
+    plan['action_allowed'] = False  # centralized authorization gate owns state-changing permission
     plan['deep_reasoning'] = bool(_REASON_RE.search(text)) or plan['machine_context']
     explicit_research = bool(_RESEARCH_RE.search(text))
     current = bool(_CURRENT_RE.search(text))
@@ -3218,10 +3970,13 @@ def maybe_trace_plan(plan):
 
 def chat_reply(message, paths, request=None):
     if not paths:
-        local_intent = falcon_local_intent(message)
-        local_reply = falcon_local_response(local_intent) if local_intent else None
-        if local_reply is not None:
-            return local_reply, []
+        state_reply=task_state_local_reply(message,request)
+        if state_reply is not None:
+            return state_reply, []
+    if not paths:
+        local_reason = falcon_local_reason(message, request)
+        if local_reason is not None:
+            return local_reason, []
     """→ (reply, skill keys). Never returns an error message: if the AI can't be reached, live skills answer instead."""
     tip = "" if AI_CONFIGURED else "\n\n💡 *Tip: add GROQ_API_KEY, GEMINI_API_KEY, or OPENROUTER_API_KEY to your .env file to unlock full AI conversation.*"
     learn_match = should_remember_knowledge(message)
@@ -3243,20 +3998,26 @@ def chat_reply(message, paths, request=None):
     live_ok = bool(skills) and not paths and bool(message) and not coding_request
     web_ok = bool(websearch) and websearch.ENABLED and not paths and bool(message) and not coding_request
     # 1) real-world question → look it up live first, then let the AI explain what was found
-    if live_ok and falcon_web_allowed(message) and skills.wants_live(message) and orch.get('route') != 'safe-web':
+    if live_ok and falcon_external_needed(message) and skills.wants_live(message) and orch.get('route') != 'safe-web':
         res = skills.research(message)
         if res.ok:
             reply = call_ai(skills.grounded_messages(message, res)) if AI_CONFIGURED else ""
             if not ai_failed(reply):
                 return f"{reply.strip()}\n\n{skills.sources_footer(res)}".strip(), res.keys
-            return skills.compose(res, "🌐 I checked available external information for this one. Here's what I found:") + tip, res.keys
+            return skills.compose(res, "🌐 I checked external information because this question needs current or verifiable data:") + tip, res.keys
     # 1b) needs fresh / verifiable info (or the user said "search…") → answer from the live web
-    if web_ok and falcon_web_allowed(message) and (orch.get('needs_web') or websearch.should_search(message)):
+    if web_ok and falcon_external_needed(message) and (orch.get('needs_web') or websearch.should_search(message)):
         ans = web_answer(message, request)
         if ans:
             return ans, []
     # 2) ordinary conversation
     ai_message = message
+    resolved_note = context_resolution_note(message, request)
+    if resolved_note:
+        ai_message += '\n\n' + resolved_note
+    state_note = task_state_note(request)
+    if state_note:
+        ai_message += '\n\n' + state_note
     if PF_ORCHESTRATOR:
         ai_message += '\n\n' + orchestrator_context(orch)
     if is_math_request(message):
@@ -3298,19 +4059,23 @@ def chat_reply(message, paths, request=None):
                            "Execution runs with the configured timeout.]\n" + execution_result)
     reply = call_ai(_ai_messages(ai_message, paths, request)) if AI_CONFIGURED else ""
     if reply == CHAT_PROVIDER_FALLBACK:
-        if web_ok and falcon_web_allowed(message):   # protected local intents never become web queries
-            ans = web_answer(message, request, use_ai=False)
-            if ans:
-                return ans, []
+        local_reason = falcon_local_reason(message, request)
+        if local_reason:
+            return local_reason, []
         local_reply = offline_reasoning_reply(message)
-        return (local_reply or reply), []
+        if local_reply:
+            return local_reply, []
+        if web_ok and falcon_external_needed(message):
+            ans = web_answer(message, request, use_ai=False)
+            if ans: return ans, []
+        return "💜🦅 Nandito pa rin ako. Hindi available ang isang advanced capability ngayon, pero hindi kita ire-route sa random web result. Pwede nating ituloy gamit ang local context o subukan ulit ang advanced step mamaya.", []
     if not ai_failed(reply):
         if web_ok and websearch.reply_is_unsure(reply):   # the model admits it doesn't know → check the web
             ans = web_answer(message, request)
             if ans:
                 return ans, []
         return reply, []
-    if web_ok and falcon_web_allowed(message):       # protected local intents never become web queries
+    if web_ok and falcon_external_needed(message):   # v6.5: external retrieval is never a generic-brain fallback
         ans = web_answer(message, request, use_ai=False)
         if ans:
             return ans, []
@@ -3319,19 +4084,19 @@ def chat_reply(message, paths, request=None):
         return ("🛠️ I couldn't complete the coding analysis because the configured AI provider is unavailable. "
                 "The pasted code was not treated as a media request or executed automatically." + tip), []
     if paths:
-        return ("📎 Purple Falcon received the file, but the required file-analysis capability is temporarily unavailable. "
+        return ("📎 Purple Falcon received the file, but one advanced file-analysis capability is temporarily unavailable. "
                 + ("I can still analyse it — just say “analyze this”." if analyst else "Please try again in a moment.") + tip), []
     if _SMALLTALK.match(message or ""):
         return ("Kumusta, kaibigan! 💜 My AI brain is taking a short rest, but I can still check the real world for you — try "
                 "“weather in Cebu”, “USD to PHP”, “who is …”, or tap one of the news buttons." + tip), []
-    if live_ok and falcon_web_allowed(message) and ("?" in message or _OPEN_QUESTION.match(message) or len(message.split()) <= 4):
+    if live_ok and falcon_external_needed(message) and ("?" in message or _OPEN_QUESTION.match(message) or len(message.split()) <= 4):
         res = skills.research(message, generic=True)
         if res.ok:
-            return skills.compose(res, "🌐 I checked available external information for this one:") + tip, res.keys
+            return skills.compose(res, "🌐 I checked external information because this question needs current or verifiable data:") + tip, res.keys
     local_reply = offline_reasoning_reply(message)
     if local_reply:
         return local_reply + tip, []
-    return (skills.friendly_fallback(message) if skills else "💜🦅 Purple Falcon is still here. One internal capability is temporarily unavailable, so please try that step again in a moment.") + tip, []
+    return (skills.friendly_fallback(message) if skills else "💜🦅 Purple Falcon is still here. One advanced capability is temporarily unavailable, but local conversation and routing remain active.") + tip, []
 
 def last_skill_keys(request=None):
     for m in reversed(load_chat(request)["messages"]):
@@ -3387,12 +4152,136 @@ def new_chat(request: gr.Request):
     hide = gr.update(value=None, visible=False)
     return (render_chat_html(request=request), hide, hide, hide, hide, None, gr.update(visible=False), "", None)
 
+def _transfer_key(direction,path):
+    return f"{direction}:{os.path.basename(path or '')}:{os.path.abspath(path) if path else ''}"
+
+def record_transfer_hash(state,direction,path,request=None,note=''):
+    """Hash an actual local transfer artifact and store the full digest plus audit entry."""
+    if not path or not os.path.isfile(path): return state,None
+    snap=file_integrity_snapshot(path); key=_transfer_key(direction,path)
+    reg=dict(state.get('transfer_hashes') or {})
+    entry={'direction':direction,'path':path,'file':os.path.basename(path),'size':snap.get('size'),'sha256':snap.get('sha256'),
+           'at':datetime.now().isoformat(timespec='seconds'),'note':note}
+    reg[key]=entry; state['transfer_hashes']=reg
+    state,_=append_sha256_audit(state,f'{direction}-hash',path,snap.get('sha256'),snap.get('size'),'','verified' if snap.get('sha256') else 'hash-unavailable',note)
+    return state,entry
+
+def verify_transfer_hash(state,direction,path,expected_sha256=None):
+    """Re-hash the local file immediately before consumption/delivery and compare with recorded/expected digest."""
+    if not path or not os.path.isfile(path): return state,{'verified':False,'reason':'file is not available for transfer verification'}
+    snap=file_integrity_snapshot(path); key=_transfer_key(direction,path); reg=dict(state.get('transfer_hashes') or {}); prior=reg.get(key) or {}
+    expected=normalized_sha256(expected_sha256) or prior.get('sha256')
+    if not snap.get('sha256'): return state,{'verified':False,'reason':'SHA-256 could not be computed'}
+    if expected and snap['sha256']!=expected:
+        state,_=append_sha256_audit(state,f'{direction}-verify',path,snap['sha256'],snap.get('size'),'','mismatch',f'expected {expected}')
+        return state,{'verified':False,'reason':f"SHA-256 mismatch: expected {expected}, got {snap['sha256']}",'sha256':snap['sha256']}
+    status='verified' if expected else 'hashed'
+    state,_=append_sha256_audit(state,f'{direction}-verify',path,snap['sha256'],snap.get('size'),'','verified',f'{status} before transfer use')
+    if not expected:
+        state,_entry=record_transfer_hash(state,direction,path,note='baseline digest established during verification')
+    return state,{'verified':True,'reason':'SHA-256 matched recorded digest' if expected else 'SHA-256 baseline recorded','sha256':snap['sha256'],'size':snap.get('size')}
+
+def _env_int(name, default, minimum, maximum):
+    try:
+        value=int(str(os.getenv(name, default)).strip())
+    except (TypeError, ValueError):
+        value=default
+    return max(minimum,min(maximum,value))
+
+def _env_float(name, default, minimum, maximum):
+    try:
+        value=float(str(os.getenv(name, default)).strip())
+    except (TypeError, ValueError):
+        value=default
+    return max(minimum,min(maximum,value))
+
+# Configurable transfer-integrity retry policy. Values are clamped to safe bounds.
+_HASH_RETRY_MAX=_env_int('PF_HASH_RETRY_COUNT',2,1,5)
+_HASH_RETRY_DELAY=_env_float('PF_HASH_RETRY_DELAY',0.05,0.0,2.0)
+_HASH_BACKOFF_FACTOR=_env_float('PF_HASH_BACKOFF_FACTOR',2.0,1.0,4.0)
+_HASH_BACKOFF_MAX=_env_float('PF_HASH_BACKOFF_MAX',2.0,0.05,5.0)
+_HASH_JITTER_RATIO=_env_float('PF_HASH_JITTER_RATIO',0.20,0.0,0.50)
+
+def hash_backoff_base_delay(attempt):
+    exponent=max(0,int(attempt)-1)
+    return min(_HASH_BACKOFF_MAX,_HASH_RETRY_DELAY*(_HASH_BACKOFF_FACTOR**exponent))
+
+def hash_backoff_delay(attempt,rng=None):
+    # Symmetric bounded jitter around the capped exponential delay.
+    base=hash_backoff_base_delay(attempt)
+    if _HASH_JITTER_RATIO<=0: return base
+    rand=(rng or random).uniform(-_HASH_JITTER_RATIO,_HASH_JITTER_RATIO)
+    return max(0.0,min(_HASH_BACKOFF_MAX,base*(1.0+rand)))
+
+def append_hash_retry(state,direction,path,attempt,expected,actual,outcome,reason=''):
+    hist=list(state.get('hash_retry_history') or [])
+    hist.append({'at':datetime.now().isoformat(timespec='seconds'),'direction':direction,'file':os.path.basename(path or ''),
+                 'attempt':attempt,'expected_sha256':expected or None,'actual_sha256':actual or None,'outcome':outcome,'reason':reason})
+    state['hash_retry_history']=hist[-50:]
+    state,_=append_sha256_audit(state,f'{direction}-retry',path,actual,os.path.getsize(path) if path and os.path.isfile(path) else None,
+                                '',outcome,f'attempt {attempt}/{_HASH_RETRY_MAX}: {reason}')
+    return state
+
+def verify_transfer_hash_with_retry(state,direction,path,expected_sha256=None,max_retries=None):
+    """Retry only the SHA-256 read/compare. Never replace or mutate file content during integrity retry."""
+    expected=normalized_sha256(expected_sha256)
+    max_retries=_HASH_RETRY_MAX if max_retries is None else max(1,min(5,int(max_retries)))
+    attempts=[]
+    for attempt in range(1,max_retries+1):
+        state,check=verify_transfer_hash(state,direction,path,expected)
+        attempts.append(check)
+        if check.get('verified'):
+            if attempt>1: state=append_hash_retry(state,direction,path,attempt,expected,check.get('sha256'),'recovered','hash matched on retry')
+            check['attempts']=attempt; return state,check
+        actual=check.get('sha256')
+        state=append_hash_retry(state,direction,path,attempt,expected,actual,'mismatch' if actual else 'read-failed',check.get('reason',''))
+        # Retry is meaningful only while the file still exists; allow a short settle window for just-written outputs.
+        if attempt<max_retries and os.path.isfile(path):
+            base_delay=hash_backoff_base_delay(attempt)
+            delay=hash_backoff_delay(attempt)
+            state=append_hash_retry(state,direction,path,attempt,expected,actual,'backoff',f'base {base_delay:.3f}s; jittered wait {delay:.3f}s before attempt {attempt+1}')
+            time.sleep(delay)
+    final=attempts[-1] if attempts else {'verified':False,'reason':'no hash attempt executed'}
+    final['attempts']=max_retries;final['reason']=f"{final.get('reason','hash verification failed')} after {max_retries} attempts"
+    return state,final
+
+def hash_retry_history_text(state,limit=12):
+    hist=state.get('hash_retry_history') or []
+    if not hist:return 'No SHA-256 retry events yet.'
+    return '\n'.join(f"{i+1}. {e['at']} — {e['direction'].upper()} — {e['file']} — attempt {e['attempt']} — {e['outcome']}" for i,e in enumerate(hist[-limit:]))
+
+def hash_uploaded_files(paths,request=None):
+    state=load_task_state(request); results=[]
+    for path in [p for p in (paths or []) if os.path.isfile(p)]:
+        state,entry=record_transfer_hash(state,'upload',path,request,'hash captured when upload entered Falcon')
+        if entry:
+            state,check=verify_transfer_hash_with_retry(state,'upload',path,entry.get('sha256'));results.append(check)
+    save_task_state(state,request);return results
+
+def verify_download_files(paths,request=None):
+    """Hash outputs when first produced, then re-hash immediately before Gradio exposes downloads."""
+    state=load_task_state(request); verified=[]; rejected=[]
+    for path in [p for p in (paths or []) if p and os.path.isfile(p)]:
+        key=_transfer_key('download',path)
+        if key not in (state.get('transfer_hashes') or {}): state,_=record_transfer_hash(state,'download',path,request,'output baseline captured after generation')
+        state,check=verify_transfer_hash_with_retry(state,'download',path,(state.get('transfer_hashes') or {}).get(key,{}).get('sha256'))
+        (verified if check.get('verified') else rejected).append(path)
+    save_task_state(state,request);return verified,rejected
+
+def transfer_integrity_text(state):
+    vals=list((state.get('transfer_hashes') or {}).values())
+    if not vals:return 'No upload/download hashes recorded yet.'
+    return '\n'.join(f"{i+1}. {e['direction'].upper()} — {e['file']} — {e.get('size')} bytes — {(e.get('sha256') or 'n/a')[:20]}…" for i,e in enumerate(vals[-12:]))
+
 def stage(message, files, request: gr.Request):
     message = message if message and message.strip() else ""
     paths = [p for p in paths_of(files) if os.path.exists(p)]
     if not message and not paths:
         return (gr.update(), gr.update(), files, gr.update(), None, gr.update(), gr.update(), gr.update(), gr.update())
 
+    if paths:
+        hash_uploaded_files(paths, request)
+    update_task_state_from_user(message, paths, request)
     save_message("user", message, file=", ".join(os.path.basename(p) for p in paths) if paths else None,
                  request=request)
     hide = gr.update(visible=False)
@@ -3433,6 +4322,13 @@ def respond(job, theme_key, ctx, request: gr.Request):
     else:
         reply, keys = chat_reply(message, paths, request)
 
+    if downloads:
+        verified_downloads, rejected_downloads = verify_download_files(downloads, request)
+        downloads = verified_downloads
+        if rejected_downloads:
+            print(f"⚠️ Download integrity rejected: {rejected_downloads}")
+            reply += "\n\n🔐 One generated download was withheld because its SHA-256 integrity check still did not pass after the retry limit."
+    update_task_state_from_result(reply, request)
     save_message("assistant", reply, key=",".join(keys) if keys else None, request=request)
     return (render_chat_html(request=request),
             gr.update(value=img, visible=img is not None),
@@ -3566,7 +4462,7 @@ with gr.Blocks(title=TITLE, **blocks_kwargs) as demo:
                 'Tap 🎤 in the composer to speak, or toggle spoken replies below.</div>')
         gr.HTML(f'<div class="pf-settings-group-title">About</div>'
                 f'<div style="font-size:.78rem;color:var(--pf-text2);line-height:1.6">'
-                f'Purple Falcon AI v6.4.2<br>Code execution: {"On" if RUN_CODE_ENABLED else "Off"}<br>'
+                f'Purple Falcon AI v6.6.8<br>Code execution: {"On" if RUN_CODE_ENABLED else "Off"}<br>'
                 f'Chat AI: {"Connected" if AI_CONFIGURED else "Not configured"}</div>')
 
     pending_file = gr.State(None)
