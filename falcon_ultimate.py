@@ -2,7 +2,7 @@
 
 
 # ==================================================
-# 💜 PURPLE FALCON PH v6.8.3 — LIVE SKILLS + SELF-LEARNING + FILE ANALYST + NEWS + LOGO + IMAGE/VIDEO 🇵🇭
+# 💜 PURPLE FALCON PH v6.8.4 — LIVE SKILLS + SELF-LEARNING + FILE ANALYST + NEWS + LOGO + IMAGE/VIDEO 🇵🇭
 # ==================================================
 #   ✅ Live skills that learn: weather, exchange rates, world clock, Wikipedia, web search, web pages, earthquakes, dictionary,
 #      country facts, calculator — used whenever the AI model can't answer or is unreachable (falcon_skills.py)
@@ -269,7 +269,7 @@ except ImportError:
     websearch, WEB_STATUS = None, "⚠️ falcon_websearch.py not found next to this script"
 
 print("=" * 60)
-print("💜 PURPLE FALCON PH v6.8.3 — PROTECTED 🇵🇭")
+print("💜 PURPLE FALCON PH v6.8.4 — PROTECTED 🇵🇭")
 if ENV_PATH:
     print(f"   .env file:     {'✅' if not ENV_PROBLEMS else '⚠️'} {ENV_LOADED} setting(s) read")
     for _p in ENV_PROBLEMS: print(f"                  ↳ {_p}")
@@ -361,7 +361,7 @@ def build_status_bar_html():
              ("Database", "Not Connected", False)]
     parts = "".join(f'<div class="pf-status-item{" ok" if ok else ""}"><span class="dot"></span><span>{name}: {state}</span></div>'
                     for name, state, ok in items)
-    return parts + '<div class="pf-status-item"><span>Purple Falcon AI v6.8.3</span></div>'
+    return parts + '<div class="pf-status-item"><span>Purple Falcon AI v6.8.4</span></div>'
 
 def build_sidebar_nav_html():
     soon = lambda icon, label: (f'<div class="pf-nav-item disabled"><span>{icon}</span>'
@@ -427,7 +427,7 @@ except Exception as _e:
     print(f"⚠️ Couldn't prepare chat avatar: {_e}")
 
 # ==================================================
-# SETTINGS LOCALIZATION v6.8.3
+# SETTINGS LOCALIZATION v6.8.4
 # ==================================================
 SETTINGS_LANGUAGES=[('English','en'),('Filipino / Tagalog','tl'),('Cebuano / Bisaya','ceb'),('Malay','ms'),('Indonesian','id'),('Spanish','es'),('French','fr'),('German','de'),('Portuguese','pt'),('Italian','it'),('Japanese / 日本語','ja'),('Korean / 한국어','ko')]
 SETTINGS_I18N={
@@ -457,7 +457,7 @@ UI_I18N={
 'it':{'new_chat':'Nuova Chat','workspace':'Area di lavoro','recent':'Recenti','soon':'Prossimamente','copy':'Copia','read':'Leggi ad alta voce','helpful':'Utile','not_helpful':'Non utile','insights':'Approfondimenti AI','run':'Esegui','running':'Esecuzione…','ready':'Pronto','offline':'Offline','not_connected':'Non connesso','knowledge':'Base di conoscenza','database':'Database','tools':'Strumenti','attach':'Allega file','clear':'Cancella','send':'Invia','stop':'Ferma','download':'Scarica','save':'Salva','reset':'Reimposta','close':'Chiudi','processing':'Elaborazione','uploading':'Caricamento','analyzing':'Analisi','generating':'Generazione','verifying':'Verifica'},
 'ja':{'new_chat':'新しいチャット','workspace':'ワークスペース','recent':'最近','soon':'近日公開','copy':'コピー','read':'読み上げ','helpful':'役に立った','not_helpful':'役に立たなかった','insights':'AI インサイト','run':'実行','running':'実行中…','ready':'準備完了','offline':'オフライン','not_connected':'未接続','knowledge':'ナレッジベース','database':'データベース','tools':'ツール','attach':'ファイルを添付','clear':'クリア','send':'送信','stop':'停止','download':'ダウンロード','save':'保存','reset':'リセット','close':'閉じる','processing':'処理中','uploading':'アップロード中','analyzing':'分析中','generating':'生成中','verifying':'確認中'},
 'ko':{'new_chat':'새 채팅','workspace':'작업 공간','recent':'최근','soon':'곧 제공','copy':'복사','read':'소리내어 읽기','helpful':'도움됨','not_helpful':'도움 안 됨','insights':'AI 인사이트','run':'실행','running':'실행 중…','ready':'준비됨','offline':'오프라인','not_connected':'연결 안 됨','knowledge':'지식 베이스','database':'데이터베이스','tools':'도구','attach':'파일 첨부','clear':'지우기','send':'보내기','stop':'중지','download':'다운로드','save':'저장','reset':'재설정','close':'닫기','processing':'처리 중','uploading':'업로드 중','analyzing':'분석 중','generating':'생성 중','verifying':'확인 중'}}
-# v6.8.3 dark-mode accessibility checks
+# v6.8.4 dark-mode accessibility checks
 # WCAG-style relative luminance / contrast helpers for deterministic theme checks.
 def _a11y_hex_rgb(value):
     v=str(value or '').strip().lstrip('#')
@@ -578,7 +578,7 @@ def localized_system_status_html(lang='en'):
 def localized_settings_html(lang='en'):
     x=SETTINGS_I18N.get(lang,SETTINGS_I18N['en']);return f'<div class="pf-settings-title" role="heading" aria-level="2">{x[0]}</div><div class="pf-settings-group-title">{x[2]}</div>'
 def localized_settings_detail_html(lang='en'):
-    x=SETTINGS_I18N.get(lang,SETTINGS_I18N['en']);status=x[7] if AI_CONFIGURED else x[8];on='On' if RUN_CODE_ENABLED else 'Off';return f'<div class="pf-settings-group-title">{x[4]}</div><div style="font-size:.78rem;color:var(--pf-text2)">🎤</div><div class="pf-settings-group-title">{x[5]}</div><div style="font-size:.78rem;color:var(--pf-text2);line-height:1.6">Purple Falcon AI v6.8.3<br>{x[6]}: {on}</div>'
+    x=SETTINGS_I18N.get(lang,SETTINGS_I18N['en']);status=x[7] if AI_CONFIGURED else x[8];on='On' if RUN_CODE_ENABLED else 'Off';return f'<div class="pf-settings-group-title">{x[4]}</div><div style="font-size:.78rem;color:var(--pf-text2)">🎤</div><div class="pf-settings-group-title">{x[5]}</div><div style="font-size:.78rem;color:var(--pf-text2);line-height:1.6">Purple Falcon AI v6.8.4<br>{x[6]}: {on}</div>'
 
 
 def localized_action_updates(lang='en'):
@@ -1032,7 +1032,7 @@ body.pf-tools-open #pf-tools-link { background: var(--pf-bg3) !important; color:
 .pf-status-item .dot { width: 6px; height: 6px; border-radius: 50%; background: #6b7280; flex: 0 0 auto; }
 .pf-status-item.ok .dot { background: #22c55e; }
 
-/* ---------- v6.8.3 unified rounded + fluid responsive shell ---------- */
+/* ---------- v6.8.4 unified rounded + fluid responsive shell ---------- */
 :root {
     --pf-radius-xs: clamp(8px, .55vw, 12px);
     --pf-radius-sm: clamp(12px, .8vw, 16px);
@@ -1101,7 +1101,7 @@ body.pf-tools-open #pf-tools-link { background: var(--pf-bg3) !important; color:
     #pf-app-shell { width: min(calc(100% - 32px), 1760px); }
     #pf-chat-scroll, #pf-composer-area { padding-inline: clamp(1.25rem, 2vw, 2.25rem) !important; }
 }
-/* ---------- v6.8.3 fluid spacing system ---------- */
+/* ---------- v6.8.4 fluid spacing system ---------- */
 :root {
     --pf-space-1: clamp(4px, .28vw, 6px);
     --pf-space-2: clamp(6px, .42vw, 9px);
@@ -1169,12 +1169,12 @@ body.pf-tools-open #pf-tools-link { background: var(--pf-bg3) !important; color:
 @media (min-width: 1600px) {
     :root { --pf-content-pad-x: clamp(1.4rem, 1.8vw, 2.3rem); --pf-section-gap: clamp(1rem, 1.15vw, 1.5rem); }
 }
-/* v6.8.3 theme selector + settings overflow hardening */
+/* v6.8.4 theme selector + settings overflow hardening */
 #pf-settings-panel { overflow-x: hidden !important; }
 #pf-settings-panel > *, #pf-settings-panel .form, #pf-settings-panel .wrap { max-width: 100% !important; min-width: 0 !important; }
 #pf-theme, #pf-settings-language { width: 100% !important; max-width: 100% !important; min-width: 0 !important; }
 #pf-theme .wrap, #pf-settings-language .wrap { overflow: visible !important; }
-/* ---------- v6.8.3 fullscreen shell + all-device settings select fix ---------- */
+/* ---------- v6.8.4 fullscreen shell + all-device settings select fix ---------- */
 html, body, gradio-app, .gradio-container {
     width: 100% !important; max-width: none !important;
     height: 100vh !important; height: 100svh !important; height: 100dvh !important;
@@ -1258,7 +1258,7 @@ body > [role="listbox"] {
     #pf-settings-panel .pf-settings-title { position: sticky; top: 0; z-index: 9001; }
     #pf-theme, #pf-settings-language { position: relative !important; z-index: 9002 !important; }
 }
-/* ---------- v6.8.3 Copilot-style composer placement; header/logo preserved ---------- */
+/* ---------- v6.8.4 Copilot-style composer placement; header/logo preserved ---------- */
 :root {
     --pf-composer-width: min(980px, calc(100% - 2 * var(--pf-content-pad-x)));
     --pf-composer-reserve: clamp(108px, 15vh, 148px);
@@ -1328,6 +1328,62 @@ body > [role="listbox"] {
     #pf-inputbar { min-height: 56px !important; border-radius: 22px !important; padding: .35rem .5rem !important; }
     #pf-composer-area { padding-top: .2rem !important; padding-bottom: calc(.35rem + env(safe-area-inset-bottom)) !important; }
 }
+/* ---------- v6.8.4 definitive viewport alignment + visible Settings control ---------- */
+/* Gradio may wrap Blocks in centered/prose containers. Neutralize every known outer wrapper. */
+html, body, gradio-app, gradio-app > div,
+.gradio-container, .gradio-container > .main,
+.gradio-container > .wrap, .gradio-container .contain,
+#root, #root > div {
+    width: 100% !important; max-width: none !important;
+    margin-left: 0 !important; margin-right: 0 !important;
+    padding-left: 0 !important; padding-right: 0 !important;
+}
+body { min-width: 100% !important; }
+.gradio-container { position: fixed !important; inset: 0 !important; width: 100vw !important; height: 100dvh !important; }
+#pf-app-shell { position: absolute !important; inset: 0 !important; width: 100% !important; max-width: none !important; height: 100% !important; margin: 0 !important; }
+#pf-app-header, #pf-shell { width: 100% !important; max-width: none !important; margin: 0 !important; }
+#pf-shell { flex: 1 1 auto !important; min-height: 0 !important; padding: 0 !important; gap: 0 !important; }
+#pf-sidebar { margin: 0 !important; border-radius: 0 !important; }
+#pf-main { margin: 0 !important; min-width: 0 !important; }
+
+/* Make Settings impossible to lose: keep header gear and add a sidebar footer Settings button. */
+#pf-settings-btn { display: flex !important; visibility: visible !important; opacity: 1 !important; pointer-events: auto !important; z-index: 200 !important; }
+#pf-sidebar-footer { display: flex !important; flex-direction: column !important; align-items: stretch !important; gap: .35rem !important; }
+#pf-sidebar-footer .form { width: 100% !important; }
+#pf-sidebar-settings { width: 100% !important; min-height: 42px !important; border-radius: 10px !important; justify-content: flex-start !important; }
+
+/* Settings is a desktop right drawer, mobile bottom sheet, landscape right drawer. */
+#pf-settings-overlay { position: fixed !important; inset: 0 !important; z-index: 9000 !important; }
+#pf-settings-panel {
+    position: fixed !important; top: 0 !important; right: 0 !important; bottom: 0 !important; left: auto !important;
+    width: min(360px, 92vw) !important; max-width: 92vw !important;
+    height: 100dvh !important; max-height: 100dvh !important;
+    z-index: 9100 !important;
+    transform: translateX(105%) !important;
+    border-radius: 18px 0 0 18px !important;
+    overflow-y: auto !important; overflow-x: hidden !important;
+}
+#pf-settings-panel.pf-open { transform: translateX(0) !important; }
+@media (max-width: 640px) and (orientation: portrait) {
+    #pf-settings-panel {
+        top: auto !important; left: 0 !important; right: 0 !important; bottom: 0 !important;
+        width: 100vw !important; max-width: 100vw !important;
+        height: min(88dvh, 760px) !important; max-height: 88dvh !important;
+        transform: translateY(105%) !important;
+        border-radius: 20px 20px 0 0 !important;
+    }
+    #pf-settings-panel.pf-open { transform: translateY(0) !important; }
+}
+@media (orientation: landscape) and (max-height: 700px) and (max-width: 1180px) {
+    #pf-settings-panel {
+        top: 0 !important; left: auto !important; right: 0 !important; bottom: 0 !important;
+        width: min(440px, 92vw) !important; max-width: 92vw !important;
+        height: 100dvh !important; max-height: 100dvh !important;
+        transform: translateX(105%) !important;
+        border-radius: 16px 0 0 16px !important;
+    }
+    #pf-settings-panel.pf-open { transform: translateX(0) !important; }
+}
 /* ---------- settings drawer ---------- */
 #pf-settings-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 70; display: none; }
 #pf-settings-overlay.pf-open { display: block; }
@@ -1359,7 +1415,7 @@ body > [role="listbox"] {
     body.pf-sidebar-collapsed .pf-nav-label, body.pf-sidebar-collapsed .pf-nav-section-title, body.pf-sidebar-collapsed .pf-recent-list { display: block !important; }
 }
 @media (max-width: 640px) {
-    /* v6.8.3: touch-friendly bottom sheet plus explicit dark-theme mobile treatment */
+    /* v6.8.4: touch-friendly bottom sheet plus explicit dark-theme mobile treatment */
     #pf-settings-overlay { background: rgba(0,0,0,.52); backdrop-filter: blur(2px); }
     #pf-settings-panel {
         top: auto; right: 0; bottom: 0; left: 0;
@@ -1402,7 +1458,7 @@ body > [role="listbox"] {
     #pf-workspace-header { padding-left: .75rem !important; padding-right: .75rem !important; }
     #pf-status-bar { gap: .6rem !important; font-size: .64rem; flex-wrap: nowrap; overflow-x: auto; justify-content: flex-start !important; padding: 0 .6rem; }
 }
-/* v6.8.3 dark-mode mobile settings */
+/* v6.8.4 dark-mode mobile settings */
 @media (max-width: 640px) {
     :root[data-pf-theme="purple"], :root[data-pf-theme="sunset"], :root[data-pf-theme="ocean"], :root[data-pf-theme="emerald"] { color-scheme: dark; }
     :root[data-pf-theme="purple"] #pf-settings-panel, :root[data-pf-theme="sunset"] #pf-settings-panel, :root[data-pf-theme="ocean"] #pf-settings-panel, :root[data-pf-theme="emerald"] #pf-settings-panel {
@@ -1419,7 +1475,7 @@ body > [role="listbox"] {
     :root[data-pf-theme="purple"] #pf-settings-close, :root[data-pf-theme="sunset"] #pf-settings-close, :root[data-pf-theme="ocean"] #pf-settings-close, :root[data-pf-theme="emerald"] #pf-settings-close { color:var(--pf-text) !important; background:color-mix(in srgb,var(--pf-bg3) 86%,transparent) !important; border-radius:10px !important; }
     :root[data-pf-theme="purple"] #pf-settings-close:hover, :root[data-pf-theme="sunset"] #pf-settings-close:hover, :root[data-pf-theme="ocean"] #pf-settings-close:hover, :root[data-pf-theme="emerald"] #pf-settings-close:hover { background:color-mix(in srgb,var(--pf-accent) 24%,var(--pf-bg3)) !important; }
 }
-/* v6.8.3 accessibility additions for mobile dark settings */
+/* v6.8.4 accessibility additions for mobile dark settings */
 @media (max-width: 640px) {
     #pf-settings-panel button:focus-visible,
     #pf-settings-panel input:focus-visible,
@@ -3924,6 +3980,25 @@ def _huggingface_image(prompt):
         raise _hf_error(e)
     return img.convert("RGBA")
 
+def run_viewport_alignment_settings_visibility_tests():
+    source=globals().get('__file__','')
+    try: text=open(source,'r',encoding='utf-8').read() if source else ''
+    except Exception: text=''
+    required={
+      'gradio_fixed_viewport':'.gradio-container { position: fixed !important; inset: 0 !important;' in text,
+      'shell_inset_zero':'#pf-app-shell { position: absolute !important; inset: 0 !important;' in text,
+      'outer_wrappers_zeroed':'.gradio-container > .main' in text and '#root > div' in text,
+      'shell_no_gap':'#pf-shell { flex: 1 1 auto !important;' in text and 'gap: 0 !important;' in text,
+      'header_settings_visible':'#pf-settings-btn { display: flex !important;' in text,
+      'sidebar_settings_button':'sidebar_settings_btn = gr.Button("⚙️ Settings"' in text,
+      'sidebar_settings_wired':'sidebar_settings_btn.click(None, None, None' in text,
+      'desktop_settings_drawer':'width: min(360px, 92vw) !important;' in text,
+      'portrait_settings_sheet':'max-width: 640px' in text and 'transform: translateY(105%)' in text,
+      'landscape_settings_drawer':'max-height: 700px' in text and 'width: min(440px, 92vw)' in text,
+    }
+    failures=[k for k,v in required.items() if not v]
+    return {'passed':not failures,'failures':failures,'checks':required,'count':len(required)}
+
 def run_copilot_composer_layout_tests():
     source=globals().get('__file__','')
     try: text=open(source,'r',encoding='utf-8').read() if source else ''
@@ -4919,7 +4994,7 @@ def apply_confidentiality_guard(reply):
         return confidential_falcon_reply()
     return text
 
-# ---- v6.8.3 public meta conversation regression tests ----
+# ---- v6.8.4 public meta conversation regression tests ----
 _PUBLIC_META_TRUE_CASES=[
 'pano ka ba kumukuha ng information?','paano ka kumukuha ng impormasyon?','how do you get information?','where do you get information?',
 'pano ka naghahanap ng info?','paano ka naghahanap ng data?','saan galing ang information mo?','saan ka kumukuha ng datos?',
@@ -5604,8 +5679,9 @@ with gr.Blocks(title=TITLE, **blocks_kwargs) as demo:
                 gr.HTML(build_sidebar_nav_html())
             with gr.Column(elem_id="pf-sidebar-scroll"):
                 recent_html = gr.HTML(recent_list_html())
-            with gr.Row(elem_id="pf-sidebar-footer"):
-                gr.HTML('<div class="pf-user-avatar">👤</div><div>User Profile<br><span style="opacity:.7">Soon..</span></div>')
+            with gr.Column(elem_id="pf-sidebar-footer"):
+                gr.HTML('<div style="display:flex;align-items:center;gap:.55rem"><div class="pf-user-avatar">👤</div><div>User Profile<br><span style="opacity:.7">Soon..</span></div></div>')
+                sidebar_settings_btn = gr.Button("⚙️ Settings", elem_id="pf-sidebar-settings")
 
         with gr.Column(elem_id="pf-main", scale=1):
             with gr.Row(elem_id="pf-workspace-header"):
@@ -5722,6 +5798,7 @@ with gr.Blocks(title=TITLE, **blocks_kwargs) as demo:
     collapse_btn.click(None, None, None, js="() => { if(window.pfToggleSidebar) pfToggleSidebar(); }")
     hamburger_btn.click(None, None, None, js="() => { if(window.pfToggleSidebarMobile) pfToggleSidebarMobile(); }")
     settings_btn.click(None, None, None, js="() => { if(window.pfToggleSettings) pfToggleSettings(); }")
+    sidebar_settings_btn.click(None, None, None, js="() => { if(window.pfToggleSettings) pfToggleSettings(); }")
     settings_close_btn.click(None, None, None, js="() => { if(window.pfToggleSettings) pfToggleSettings(); }")
     copy_btn.click(None, None, None, js="() => { if(window.pfCopyLatestReply) pfCopyLatestReply(); }")
     read_aloud_btn.click(None, None, None, js="() => { if(window.pfReadAloudOnce) pfReadAloudOnce(); }")
