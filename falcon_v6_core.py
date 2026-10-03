@@ -48,14 +48,21 @@ class V6IntentRouter:
     MEMORY = re.compile(r"\b(?:memory|remember|remembering|naalala|natatandaan|conversation|previous|earlier|kanina|pinag.?uusapan|discussing|previous topic|last topic)\b", re.I)
     FOLLOWUP = re.compile(r"\b(?:bakit|why|ano(?:ng)? nangyari|what happened|tuloy|continue|ulit|again|last answer|sagot|answer|ito|iyan|yan|yun|yung|that|this|it)\b", re.I)
     SELFQ = re.compile(r"\b(?:your skills|your capabilities|what can you do|what will you learn|what did you learn|your status|system status|your tools|about yourself|what is enabled)\b", re.I)
-    CURRENT = re.compile(r"\b(?:latest|current|today|recent|news|weather|price|version|release|schedule|availability|updated?)\b", re.I)
-    RESEARCH = re.compile(r"\b(?:search|research|look ?up|find online|web|internet|source|citation|verify|confirm)\b", re.I)
+    CURRENT = re.compile(r"\b(?:latest|current|today|recent|news|weather|price|cost|srp|rrp|rate|version|release|schedule|availability|updated?|now|right now)\b", re.I)
+    RESEARCH = re.compile(r"\b(?:search|research|look ?up|find online|web|internet|source|citation|verify|confirm|compare|pricing|who is|what is|when is|where is|how much)\b", re.I)
     CODE = re.compile(r"```|\b(?:code|coding|script|program|function|class|algorithm)\b|\b(?:write|create|make|build|generate|give me|show me|provide)\b.{0,60}\b(?:sample|example|code|program|script|function|algorithm)\b", re.I)
     MATH = re.compile(r"\b(?:calculate|compute|solve|equation|algebra|calculus|derivative|integral|matrix|probability|statistics?|fft|rms|oee|mtbf|mttr)\b|\d\s*[+*/^%-]\s*\d", re.I)
     INDUSTRIAL = re.compile(r"\b(?:machine|motor|pump|bearing|vibration|rms|fft|temperature|downtime|oee|alarm|plc|vfd|servo|maintenance)\b", re.I)
 
     def classify(self, message: str, memory: MemoryContext, has_image: bool=False, has_file: bool=False) -> IntentResult:
         text=(message or "").strip()
+        live_intent = bool(
+            text and (
+                self.CURRENT.search(text)
+                or self.RESEARCH.search(text)
+                or re.search(r"\b(?:what|who|where|when|why|how|which)\b.*\b(?:now|price|cost|srp|rrp|rate|release|latest|current|today|weather|news)\b", text, re.I)
+            )
+        )
         if self.ACK.match(text):
             return IntentResult("acknowledgement", False, False, True, "high")
         if self.SELFQ.search(text):
@@ -72,7 +79,7 @@ class V6IntentRouter:
             return IntentResult("math", False, False, True, "high")
         if self.INDUSTRIAL.search(text):
             return IntentResult("industrial", True, False, True, "high")
-        if self.CURRENT.search(text) or self.RESEARCH.search(text):
+        if live_intent:
             return IntentResult("external_current", True, True, True, "high")
         if has_file:
             return IntentResult("file", True, False, True, "high")
@@ -117,7 +124,7 @@ class V6Orchestrator:
         return bool(
             self.router.CURRENT.search(text)
             or self.router.RESEARCH.search(text)
-            or re.search(r"\b(who|what|where|when|why|how|which|is|are|does|did|sino|ano|saan|kailan|paano|bakit)\b", text, re.I)
+            or re.search(r"\b(?:what|who|where|when|why|how|which)\b.*\b(?:now|price|cost|srp|rrp|rate|release|latest|current|today|weather|news)\b", text, re.I)
         )
 
     def handle(self, message: str, memory: MemoryContext, *, has_image=False, has_file=False) -> TurnResult:
@@ -136,7 +143,6 @@ class V6Orchestrator:
             candidate=self.brain(message, memory)
         check=self.validator.validate(intent, candidate)
         if not check.passed:
-            # Important: do not stop on an unavailable capability if a live-web answer can answer the factual request.
             if intent.name in self.validator.LOCAL:
                 candidate=self.local.execute(intent, memory)
             elif self._looks_live(message) and callable(self.web):
@@ -150,5 +156,5 @@ class V6Orchestrator:
                     return TurnResult(web_candidate.content, intent.name, "web", intent.confidence, True)
                 candidate = web_candidate if web_candidate.success else self.brain(message, memory)
             else:
-                return TurnResult("🧠 The selected capability is unavailable for this turn. I kept the conversation context and did not replace the request with unrelated web results.", intent.name, candidate.route or "unavailable", "low", False)
+                return TurnResult("🧠 The selected capability is unavailable for this turn.", intent.name, candidate.route or "unavailable", "low", False)
         return TurnResult(candidate.content, intent.name, candidate.route, intent.confidence, candidate.route == "web")
