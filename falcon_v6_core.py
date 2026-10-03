@@ -110,6 +110,16 @@ class V6Orchestrator:
         self.router=V6IntentRouter(); self.validator=V6Validator(); self.local=V6ConversationAgent()
         self.brain=brain; self.web=web; self.code=code or brain; self.math=math or brain; self.vision=vision or brain
 
+    def _looks_live(self, message: str) -> bool:
+        text = (message or "").strip()
+        if not text:
+            return False
+        return bool(
+            self.router.CURRENT.search(text)
+            or self.router.RESEARCH.search(text)
+            or re.search(r"\b(who|what|where|when|why|how|which|is|are|does|did|sino|ano|saan|kailan|paano|bakit)\b", text, re.I)
+        )
+
     def handle(self, message: str, memory: MemoryContext, *, has_image=False, has_file=False) -> TurnResult:
         intent=self.router.classify(message, memory, has_image, has_file)
         if intent.name in self.validator.LOCAL:
@@ -126,11 +136,19 @@ class V6Orchestrator:
             candidate=self.brain(message, memory)
         check=self.validator.validate(intent, candidate)
         if not check.passed:
-            # Crucial rule: never use web to rescue acknowledgement/memory/self/follow-up.
+            # Important: do not stop on an unavailable capability if a live-web answer can answer the factual request.
             if intent.name in self.validator.LOCAL:
                 candidate=self.local.execute(intent, memory)
-            elif intent.requires_web:
-                candidate=self.web(message, memory)
+            elif self._looks_live(message) and callable(self.web):
+                web_candidate=self.web(message, memory)
+                if web_candidate.success and web_candidate.content.strip():
+                    return TurnResult(web_candidate.content, intent.name, "web", intent.confidence, True)
+                candidate = web_candidate if web_candidate.success else self.brain(message, memory)
+            elif intent.requires_web and callable(self.web):
+                web_candidate=self.web(message, memory)
+                if web_candidate.success and web_candidate.content.strip():
+                    return TurnResult(web_candidate.content, intent.name, "web", intent.confidence, True)
+                candidate = web_candidate if web_candidate.success else self.brain(message, memory)
             else:
                 return TurnResult("🧠 The selected capability is unavailable for this turn. I kept the conversation context and did not replace the request with unrelated web results.", intent.name, candidate.route or "unavailable", "low", False)
         return TurnResult(candidate.content, intent.name, candidate.route, intent.confidence, candidate.route == "web")
