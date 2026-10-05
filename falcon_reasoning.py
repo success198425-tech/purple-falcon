@@ -1,204 +1,179 @@
 # ==================================================
-# 🧠 PURPLE FALCON PH — FALLBACK REASONING (DOLA-style layers)
-#    When the main AI is unreachable, use multi-layer reasoning
-#    to synthesize evidence from live web sources.
+# Purple Falcon Local Brain v2.0
+# Evidence reasoning + relevance-gated persistent local learning
 # ==================================================
-import re
-import time
+import os, re, json, time, tempfile, hashlib
 from dataclasses import dataclass
-from typing import List, Optional
+from datetime import datetime, timezone
+from typing import List
 
+BRAIN_VERSION='2.0.0'
+KNOWLEDGE_FILE=os.getenv('PF_LOCAL_BRAIN_FILE','purple_falcon_local_brain.json')
+MIN_RELEVANCE=float(os.getenv('PF_LOCAL_RELEVANCE','0.42'))
+AUTO_CANDIDATES=os.getenv('PF_LOCAL_AUTO_CANDIDATES','1').lower() not in ('0','false','no','off')
 
 @dataclass
 class ReasoningLayer:
-    """Each layer adds confidence to the final answer."""
-    name: str                    # "source_alignment", "temporal_consistency", etc.
-    confidence: float            # 0..1 how well this layer agrees
-    evidence: str                # explanation
-    applicable: bool = True      # whether this layer applies to this query
+    name:str; confidence:float; evidence:str; applicable:bool=True
 
+_STOP={'the','a','an','is','are','was','were','of','to','for','and','or','in','on','at','what','who','how','my','your','this','that','ang','ng','sa','ay','ano','sino','paano','ba','po'}
+_FRESH=re.compile(r'\b(?:current|latest|today|now|ngayon|recent|news|weather|price|stock|score|schedule|election|president|prime minister|ceo)\b',re.I)
 
-def analyze_source_alignment(evidence_list) -> ReasoningLayer:
-    """Do multiple sources agree on key facts?"""
-    if len(evidence_list) < 2:
-        return ReasoningLayer("source_alignment", 0.5, "Only one source available", applicable=False)
-    
-    # Extract key numbers/dates from evidence
-    facts = []
+def _tokens(text):
+    return {w for w in re.findall(r'\b[a-z0-9]{3,}\b',(text or '').lower()) if w not in _STOP}
+
+def _load():
+    default={'version':BRAIN_VERSION,'verified':[],'candidates':[],'memories':[]}
+    try:
+        if os.path.exists(KNOWLEDGE_FILE):
+            with open(KNOWLEDGE_FILE,encoding='utf-8') as f:d=json.load(f)
+            if isinstance(d,dict):
+                for k,v in default.items():d.setdefault(k,v)
+                return d
+    except Exception as e: print(f'Local Brain read warning: {e}')
+    return default
+
+def _save(db):
+    try:
+        folder=os.path.dirname(os.path.abspath(KNOWLEDGE_FILE)) or '.';os.makedirs(folder,exist_ok=True)
+        with tempfile.NamedTemporaryFile('w',dir=folder,suffix='.tmp',delete=False,encoding='utf-8') as f:
+            json.dump(db,f,ensure_ascii=False,indent=2);tmp=f.name
+        os.replace(tmp,KNOWLEDGE_FILE);return True
+    except Exception as e: print(f'Local Brain save warning: {e}');return False
+
+def _id(content,kind='knowledge'):
+    return hashlib.sha256((kind+'|'+content.strip().lower()).encode()).hexdigest()[:16]
+
+def relevance_score(query,item):
+    qt=_tokens(query); content=(item.get('content') or '')+' '+(item.get('title') or '')+' '+ ' '.join(item.get('tags') or [])
+    kt=_tokens(content)
+    if not qt or not kt:return 0.0
+    overlap=len(qt & kt); coverage=overlap/max(len(qt),1); precision=overlap/max(len(kt),1)
+    phrase=0.18 if (query or '').lower().strip() in content.lower() else 0
+    return min(1.0,0.72*coverage+0.28*precision+phrase)
+
+def retrieve_local(query,limit=5,min_score=MIN_RELEVANCE,include_candidates=False):
+    # Current-world questions never accept persistent local facts as authoritative current truth.
+    if _FRESH.search(query or ''):return []
+    db=_load(); pools=list(db['verified'])+list(db['memories'])
+    if include_candidates:pools+=list(db['candidates'])
+    ranked=[]
+    for item in pools:
+        score=relevance_score(query,item)
+        if score>=min_score:ranked.append((score,item))
+    ranked.sort(key=lambda x:x[0],reverse=True)
+    return [{'score':round(s,3),**i} for s,i in ranked[:limit]]
+
+def learn(content,source='user',verified=True,tags=None,title=''):
+    content=(content or '').strip()
+    if not content:return {'ok':False,'reason':'empty'}
+    db=_load(); kind='verified' if verified else 'candidate'; target=db[kind]
+    iid=_id(content,kind)
+    for x in db['verified']+db['candidates']:
+        if x.get('id')==iid or x.get('content','').strip().lower()==content.lower():return {'ok':True,'duplicate':True,'item':x}
+    row={'id':iid,'title':title,'content':content,'source':source,'verified':verified,'confidence':1.0 if verified else 0.5,'tags':tags or [],'created_at':datetime.now(timezone.utc).isoformat(),'updated_at':datetime.now(timezone.utc).isoformat(),'uses':0}
+    target.append(row);_save(db);return {'ok':True,'duplicate':False,'item':row}
+
+def remember(content,tags=None):
+    content=(content or '').strip();db=_load();iid=_id(content,'memory')
+    for x in db['memories']:
+        if x.get('content','').lower()==content.lower():return {'ok':True,'duplicate':True,'item':x}
+    row={'id':iid,'content':content,'source':'user_memory','verified':True,'confidence':1.0,'tags':tags or [],'created_at':datetime.now(timezone.utc).isoformat(),'uses':0};db['memories'].append(row);_save(db);return {'ok':True,'duplicate':False,'item':row}
+
+def forget(term):
+    db=_load();term=(term or '').strip().lower();removed=[]
+    for bucket in ('verified','candidates','memories'):
+        keep=[]
+        for x in db[bucket]:
+            if term and (term==x.get('id','').lower() or term in x.get('content','').lower()):removed.append(x)
+            else:keep.append(x)
+        db[bucket]=keep
+    _save(db);return {'ok':True,'removed':len(removed)}
+
+def knowledge_status():
+    db=_load();return {'verified':len(db['verified']),'candidates':len(db['candidates']),'memories':len(db['memories']),'file':KNOWLEDGE_FILE,'threshold':MIN_RELEVANCE}
+
+def propose_candidate(content,source='conversation',tags=None):
+    if not AUTO_CANDIDATES:return {'ok':False,'reason':'disabled'}
+    # candidates are never retrieved by default and need promotion/approval
+    return learn(content,source=source,verified=False,tags=tags)
+
+def promote_candidate(item_id):
+    db=_load()
+    for i,x in enumerate(db['candidates']):
+        if x.get('id')==item_id:
+            row=db['candidates'].pop(i);row['verified']=True;row['confidence']=1.0;row['updated_at']=datetime.now(timezone.utc).isoformat();db['verified'].append(row);_save(db);return {'ok':True,'item':row}
+    return {'ok':False,'reason':'not_found'}
+
+def local_answer(question):
+    hits=retrieve_local(question)
+    if not hits:return None
+    top=hits[0]
+    return {'answer':top.get('content',''),'confidence':top['score'],'source':top.get('source','local'),'id':top.get('id'),'hits':hits}
+
+# Existing DOLA-style evidence reasoning retained and hardened.
+def analyze_source_alignment(evidence_list):
+    if len(evidence_list)<2:return ReasoningLayer('source_alignment',.5,'Only one source available',False)
+    domains={getattr(e,'source','unknown') for e in evidence_list};return ReasoningLayer('source_alignment',min(.95,.55+.1*len(domains)),f'{len(evidence_list)} evidence items across {len(domains)} source labels')
+def analyze_temporal_consistency(evidence_list):
+    if not evidence_list:return ReasoningLayer('temporal_consistency',.5,'No evidence',False)
+    now=time.time();ages=[max(0,(now-getattr(e,'fetched',now))/3600) for e in evidence_list];avg=sum(ages)/len(ages)
+    return ReasoningLayer('temporal_consistency',.95 if avg<1 else .85 if avg<24 else .65 if avg<168 else .4,f'Average evidence age {avg:.1f} hours')
+def analyze_specificity(question,evidence_list):
+    if not evidence_list:return ReasoningLayer('specificity',.5,'No evidence',False)
+    q=_tokens(question);scores=[]
     for e in evidence_list:
-        numbers = re.findall(r'\d+(?:\.\d+)?', e.text)
-        facts.append((e.source, set(numbers)))
-    
-    # Check for overlap
-    all_numbers = set()
-    for _, nums in facts:
-        all_numbers.update(nums)
-    
-    agreement = len([f for f in facts if len(f[1]) > 0]) / len(facts) if facts else 0
-    confidence = 0.7 + (0.3 * agreement)
-    
-    return ReasoningLayer(
-        "source_alignment",
-        confidence,
-        f"{len(evidence_list)} sources found {len(all_numbers)} unique data points"
-    )
+        et=_tokens(getattr(e,'text',''));scores.append(len(q&et)/max(len(q),1))
+    v=sum(scores)/len(scores);return ReasoningLayer('specificity',min(.95,.45+.5*v),f'Query/evidence lexical coverage {v:.0%}')
+def analyze_contradiction_risk(evidence_list):
+    if len(evidence_list)<2:return ReasoningLayer('contradiction_risk',.8,'Single source',False)
+    neg={'not','never','no','false','wrong','denied','rejected'};count=0
+    for i,a in enumerate(evidence_list):
+        aw=set(getattr(a,'text','').lower().split())
+        for b in evidence_list[i+1:]:
+            bw=set(getattr(b,'text','').lower().split())
+            if bool(aw&neg)!=bool(bw&neg):count+=1
+    return ReasoningLayer('contradiction_risk',max(.4,1-.2*count),f'{count} potential polarity conflict(s)')
+def fallback_reasoning(question,evidence_list,max_layers=4):
+    layers=[analyze_source_alignment(evidence_list),analyze_temporal_consistency(evidence_list),analyze_specificity(question,evidence_list),analyze_contradiction_risk(evidence_list)]
+    active=[x for x in layers if x.applicable][:max_layers];confidence=sum(x.confidence for x in active)/len(active) if active else .5
+    explanation=f'**Reasoning ({confidence*100:.0f}% confidence)**:\n'+''.join(f"• {'✓' if x.confidence>.7 else '◐' if x.confidence>.4 else '✗'} {x.name}: {x.evidence}\n" for x in active)
+    return confidence,explanation,active
 
+def compose_with_reasoning(res,intro=None,show_reasoning=True):
+    if not getattr(res,'evidence',None):
+        try:
+            from falcon_skills import friendly_fallback;return friendly_fallback(res.question)
+        except Exception:return None
+    from falcon_skills import _GENERIC_SKILLS,sources_footer
+    specific=[e for e in res.evidence if e.skill not in _GENERIC_SKILLS];chosen=specific[:2] if specific else res.evidence[:3]
+    L=[intro or "🔎 Here's what I found live:"]
+    for e in chosen:L += ['',f'**{e.title}**' if e.title else '',e.text]
+    if show_reasoning and len(chosen)>1:
+        confidence,text,_=fallback_reasoning(res.question,chosen);L+=['',text]
+        if confidence<.6:L.append(f'⚠️ **Confidence is {confidence*100:.0f}%** — verify with another independent source')
+    foot=sources_footer(type(res)(res.question,chosen))
+    if foot:L+=['',foot]
+    return '\n'.join(x for x in L if x is not None)
 
-def analyze_temporal_consistency(evidence_list) -> ReasoningLayer:
-    """Are facts from recent sources? Do they contradict each other temporally?"""
-    if not evidence_list:
-        return ReasoningLayer("temporal_consistency", 0.5, "No evidence to check", applicable=False)
-    
-    now = time.time()
-    ages = [(now - e.fetched) / 3600 for e in evidence_list]  # in hours
-    avg_age = sum(ages) / len(ages) if ages else 0
-    
-    # Freshness score: recent = higher confidence
-    if avg_age < 1:
-        freshness = 0.95
-        desc = "All sources refreshed within the last hour"
-    elif avg_age < 24:
-        freshness = 0.85
-        desc = f"Average age: {avg_age:.1f} hours"
-    elif avg_age < 7 * 24:
-        freshness = 0.65
-        desc = f"Some sources are {avg_age/24:.1f} days old"
-    else:
-        freshness = 0.4
-        desc = f"Sources are {avg_age/(24*7):.1f} weeks old — may be outdated"
-    
-    return ReasoningLayer("temporal_consistency", freshness, desc)
+def handle_local_command(message):
+    m=(message or '').strip()
+    x=re.match(r'^/(learn|remember|forget|knowledge)\b\s*:?[ ]*(.*)$',m,re.I)
+    if not x:return None
+    cmd,arg=x.group(1).lower(),x.group(2).strip()
+    if cmd=='learn':
+        r=learn(arg,source='user',verified=True);return '🧠 Knowledge already exists.' if r.get('duplicate') else '🧠 Knowledge learned and verified from user instruction.'
+    if cmd=='remember':
+        r=remember(arg);return '🧠 Memory already exists.' if r.get('duplicate') else '🧠 Memory saved.'
+    if cmd=='forget':
+        r=forget(arg);return f"🧠 Removed {r['removed']} matching local item(s)."
+    st=knowledge_status();return f"🧠 Local Brain — verified: {st['verified']}, candidates: {st['candidates']}, memories: {st['memories']}, relevance threshold: {st['threshold']:.2f}"
 
+def self_test():
+    assert relevance_score('Purple Falcon local first',{'content':'Purple Falcon uses a local first architecture','tags':[]})>MIN_RELEVANCE
+    assert relevance_score('Tesla stock now',{'content':'Philippine Tech Vision','tags':[]})<MIN_RELEVANCE
+    assert retrieve_local('Tesla stock now')==[] # freshness gate
+    return True
 
-def analyze_specificity(question: str, evidence_list) -> ReasoningLayer:
-    """How specific/targeted was the answer?"""
-    if not evidence_list:
-        return ReasoningLayer("specificity", 0.5, "No evidence", applicable=False)
-    
-    # Longer, more detailed answers = more specific
-    avg_text_len = sum(len(e.text) for e in evidence_list) / len(evidence_list)
-    
-    # Questions with proper nouns expect more specific answers
-    proper_nouns = len(re.findall(r'\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b', question))
-    
-    specificity = min(0.95, 0.5 + (avg_text_len / 500) + (proper_nouns * 0.1))
-    
-    return ReasoningLayer(
-        "specificity",
-        specificity,
-        f"Answer depth: {avg_text_len:.0f} chars, {len(evidence_list)} sources, {proper_nouns} named entities"
-    )
-
-
-def analyze_contradiction_risk(evidence_list) -> ReasoningLayer:
-    """Do sources contradict each other?"""
-    if len(evidence_list) < 2:
-        return ReasoningLayer("contradiction_risk", 0.8, "Single source — no contradiction risk", applicable=False)
-    
-    # Look for conflicting statements (very simple heuristic)
-    common_negators = {'not', 'never', 'no', 'false', 'wrong', 'denied', 'rejected'}
-    
-    contradiction_count = 0
-    for i, e1 in enumerate(evidence_list):
-        for e2 in evidence_list[i+1:]:
-            text1_words = set(e1.text.lower().split())
-            text2_words = set(e2.text.lower().split())
-            
-            # Simple check: if one says "yes" and other says "no"
-            if text1_words & common_negators and not (text2_words & common_negators):
-                contradiction_count += 1
-    
-    confidence = max(0.5, 1.0 - (contradiction_count * 0.2))
-    
-    return ReasoningLayer(
-        "contradiction_risk",
-        confidence,
-        f"Checked {len(evidence_list)} sources for contradictions"
-    )
-
-
-def fallback_reasoning(question: str, evidence_list, max_layers=4):
-    """
-    Multi-layer reasoning when AI is unavailable.
-    Returns: (composite_confidence, reasoning_explanation, layers)
-    """
-    layers = [
-        analyze_source_alignment(evidence_list),
-        analyze_temporal_consistency(evidence_list),
-        analyze_specificity(question, evidence_list),
-        analyze_contradiction_risk(evidence_list),
-    ]
-    
-    # Keep only applicable layers
-    active = [l for l in layers if l.applicable][:max_layers]
-    
-    # Confidence = average of active layers (with early layers weighted higher)
-    if active:
-        confidence = sum(l.confidence * (2 - i/len(active)) for i, l in enumerate(active)) / (len(active) * 1.5)
-        confidence = min(1.0, max(0.3, confidence))
-    else:
-        confidence = 0.5
-    
-    explanation = f"**Reasoning ({confidence*100:.0f}% confidence)**:\n"
-    for layer in active:
-        symbol = "✓" if layer.confidence > 0.7 else "◐" if layer.confidence > 0.4 else "✗"
-        explanation += f"• {symbol} {layer.name}: {layer.evidence}\n"
-    
-    return confidence, explanation, active
-
-
-def compose_with_reasoning(res, intro=None, show_reasoning=True):
-    """
-    Enhanced compose() that adds fallback reasoning layers.
-    Use when the main AI model is unavailable.
-    """
-    if not res.evidence:
-        from falcon_skills import friendly_fallback
-        return friendly_fallback(res.question)
-    
-    from falcon_skills import _GENERIC_SKILLS, sources_footer
-    
-    specific = [e for e in res.evidence if e.skill not in _GENERIC_SKILLS]
-    chosen = specific[:2] if specific else res.evidence[:3]
-    
-    L = [intro or "🔎 Here's what I found live:"]
-    
-    # Main answer from evidence
-    for e in chosen:
-        L += ["", f"**{e.title}**" if e.title else "", e.text]
-        if e.stale:
-            L.append("*(from my memory — I couldn't refresh it just now)*")
-        elif e.cached:
-            L.append("*(from my memory)*")
-    
-    # Add reasoning layers
-    if show_reasoning and len(res.evidence) > 1:
-        confidence, reasoning_text, layers = fallback_reasoning(
-            res.question, chosen
-        )
-        L += ["", reasoning_text]
-        
-        # Confidence warning if low
-        if confidence < 0.6:
-            L.append(f"⚠️ **Confidence is {confidence*100:.0f}%** — consider verifying with another source")
-    
-    # Sources
-    foot = sources_footer(type(res)(res.question, chosen))
-    if foot:
-        L += ["", foot]
-    
-    return "\n".join(x for x in L if x is not None)
-
-
-if __name__ == "__main__":
-    # Example usage
-    from falcon_skills import research, Evidence
-    
-    # Simulate a research result
-    test_res = research("capital of France", generic=True)
-    
-    if test_res.evidence:
-        answer = compose_with_reasoning(test_res)
-        print(answer)
-    else:
-        print("No evidence found")
+__all__=['ReasoningLayer','fallback_reasoning','compose_with_reasoning','relevance_score','retrieve_local','learn','remember','forget','knowledge_status','propose_candidate','promote_candidate','local_answer','handle_local_command','self_test']
+if __name__=='__main__':print('self_test:','PASS' if self_test() else 'FAIL')
