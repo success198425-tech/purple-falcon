@@ -2,7 +2,7 @@
 
 
 # ==================================================
-# 💜 PURPLE FALCON PH v6.8.6 — LIVE SKILLS + SELF-LEARNING + FILE ANALYST + NEWS + LOGO + IMAGE/VIDEO 🇵🇭
+# 💜 PURPLE FALCON PH v6.8.7 — LIVE SKILLS + SELF-LEARNING + FILE ANALYST + NEWS + LOGO + IMAGE/VIDEO 🇵🇭
 # ==================================================
 #   ✅ Live skills that learn: weather, exchange rates, world clock, Wikipedia, web search, web pages, earthquakes, dictionary,
 #      country facts, calculator — used whenever the AI model can't answer or is unreachable (falcon_skills.py)
@@ -267,9 +267,17 @@ try:
     WEB_STATUS = "✅ live web search" if websearch.ENABLED else "◻ off (PF_WEBSEARCH=0)"
 except ImportError:
     websearch, WEB_STATUS = None, "⚠️ falcon_websearch.py not found next to this script"
+# ==================================================
+# 🧠 WEB REASONING  (falcon_webreason.py uses falcon_websearch as retrieval)
+# ==================================================
+try:
+    import falcon_webreason as webreason
+    WEBREASON_STATUS = "✅ web reasoning" if getattr(webreason, "ENABLED", True) else "◻ off (PF_WEBREASON=0)"
+except Exception as e:
+    webreason, WEBREASON_STATUS = None, f"⚠️ falcon_webreason.py unavailable ({e.__class__.__name__})"
 
 print("=" * 60)
-print("💜 PURPLE FALCON PH v6.8.6 — PROTECTED 🇵🇭")
+print("💜 PURPLE FALCON PH v6.8.7 — PROTECTED 🇵🇭")
 if ENV_PATH:
     print(f"   .env file:     {'✅' if not ENV_PROBLEMS else '⚠️'} {ENV_LOADED} setting(s) read")
     for _p in ENV_PROBLEMS: print(f"                  ↳ {_p}")
@@ -284,6 +292,7 @@ print("   News:          ✅ live RSS feeds (no key needed)")
 print(f"   File analyst:  {ANALYST_STATUS}")
 print(f"   Live skills:   {SKILLS_STATUS}")
 print(f"   Web search:    {WEB_STATUS}")
+print(f"   Web reasoning: {WEBREASON_STATUS}")
 _ai_chain = ["🐵 Peepak Local", "Gemini", "Groq", "OpenRouter"]
 if HF_API_KEY:
     _ai_chain.append("Hugging Face")
@@ -357,7 +366,7 @@ def build_app_header_left_html():
 
 def build_status_bar_html():
     items = [("AI", "Ready" if AI_CONFIGURED else "Offline", AI_CONFIGURED),
-             ("Knowledge Base", "Not Connected", False),
+             ("Knowledge Base", "Local JSON", True),
              ("Database", "Not Connected", False)]
     parts = "".join(f'<div class="pf-status-item{" ok" if ok else ""}"><span class="dot"></span><span>{name}: {state}</span></div>'
                     for name, state, ok in items)
@@ -568,7 +577,7 @@ SYSTEM_STATUS_I18N={
 def localized_system_status_html(lang='en'):
     t=UI_I18N.get(lang,UI_I18N['en']); title=SYSTEM_STATUS_I18N.get(lang,SYSTEM_STATUS_I18N['en'])
     ai_state=t['ready'] if AI_CONFIGURED else t['offline']; ai_ok=AI_CONFIGURED
-    kb_state=t['not_connected']; db_state=t['not_connected']
+    kb_state=t['ready']; db_state=t['not_connected']
     def row(name,state,ok=False):
         cls=' pf-settings-status-ok' if ok else ''
         return f'<div class="pf-settings-status-row{cls}" role="status" aria-label="{name}: {state}"><span class="pf-settings-status-dot" aria-hidden="true"></span><span>{name}</span><strong>{state}</strong></div>'
@@ -4719,6 +4728,23 @@ def analyze_large_code(message, code_inputs):
                 "The chunk findings are not available in this chat; please retry the request.")
     return final
 
+def webreason_answer(message, request=None):
+    """Primary research brain. Returns None on module failure so legacy safe-web can recover."""
+    if not webreason or not getattr(webreason, "ENABLED", True):
+        return None
+    try:
+        answer = webreason.web_reply(
+            message,
+            call_ai=call_ai,
+            ai_failed_check=ai_failed,
+            system_prompt=get_system_prompt(),
+            history=load_chat(request).get("messages", [])[-10:],
+        )
+        return answer.strip() if isinstance(answer, str) and answer.strip() else None
+    except Exception as e:
+        print(f"⚠️ (kept out of chat) WebReason failed — {e.__class__.__name__}: {e}")
+        return None
+
 def web_answer(message, request=None, use_ai=True):
     """Safe web research: sanitize outbound query, isolate untrusted evidence, rank trust, then ground the brain."""
     if not websearch or not websearch.ENABLED or not PF_SAFE_WEB:
@@ -5049,6 +5075,7 @@ def chat_reply(message, paths, request=None):
         return call_ai_vision(message, image_paths, hist_msgs), []
     live_ok = bool(skills) and not paths and bool(message) and not coding_request
     web_ok = bool(websearch) and websearch.ENABLED and not paths and bool(message) and not coding_request
+    webreason_ok = bool(webreason) and getattr(webreason, "ENABLED", True) and not paths and bool(message) and not coding_request
     # 1) real-world question → look it up live first, then let the AI explain what was found
     if live_ok and falcon_external_needed(message) and skills.wants_live(message) and orch.get('route') != 'safe-web':
         res = skills.research(message)
@@ -5058,10 +5085,16 @@ def chat_reply(message, paths, request=None):
                 return f"{reply.strip()}\n\n{skills.sources_footer(res)}".strip(), res.keys
             return skills.compose(res, "🌐 I checked external information because this question needs current or verifiable data:") + tip, res.keys
     # 1b) needs fresh / verifiable info (or the user said "search…") → answer from the live web
-    if web_ok and falcon_external_needed(message) and (orch.get('needs_web') or websearch.should_search(message)):
-        ans = web_answer(message, request)
-        if ans:
-            return ans, []
+    if falcon_external_needed(message) and (orch.get('needs_web') or (web_ok and websearch.should_search(message))):
+        if webreason_ok:
+            ans = webreason_answer(message, request)
+            if ans:
+                return ans, []
+        # Migration safety net: preserve the proven read-only safe-web path if WebReason fails.
+        if web_ok:
+            ans = web_answer(message, request)
+            if ans:
+                return ans, []
     # 2) ordinary conversation
     ai_message = message
     resolved_note = context_resolution_note(message, request)
@@ -5118,20 +5151,31 @@ def chat_reply(message, paths, request=None):
         local_reply = offline_reasoning_reply(message)
         if local_reply:
             return local_reply, []
-        if web_ok and falcon_external_needed(message):
-            ans = web_answer(message, request, use_ai=False)
-            if ans: return ans, []
+        if falcon_external_needed(message):
+            if webreason_ok:
+                ans = webreason_answer(message, request)
+                if ans: return ans, []
+            if web_ok:
+                ans = web_answer(message, request, use_ai=False)
+                if ans: return ans, []
         return "💜🦅 Nandito pa rin ako. Hindi available ang isang advanced capability ngayon, pero hindi kita ire-route sa random web result. Pwede nating ituloy gamit ang local context o subukan ulit ang advanced step mamaya.", []
     if not ai_failed(reply):
-        if web_ok and websearch.reply_is_unsure(reply):   # the model admits it doesn't know → check the web
-            ans = web_answer(message, request)
+        if falcon_external_needed(message) and ((web_ok and websearch.reply_is_unsure(reply)) or (webreason_ok and webreason.reply_is_unsure(reply))):
+            if webreason_ok:
+                ans = webreason_answer(message, request)
+                if ans: return ans, []
+            if web_ok:
+                ans = web_answer(message, request)
+                if ans: return ans, []
+        return reply, []
+    if falcon_external_needed(message):   # external retrieval remains opt-in
+        if webreason_ok:
+            ans = webreason_answer(message, request)
+            if ans: return ans, []
+        if web_ok:
+            ans = web_answer(message, request, use_ai=False)
             if ans:
                 return ans, []
-        return reply, []
-    if web_ok and falcon_external_needed(message):   # v6.5: external retrieval is never a generic-brain fallback
-        ans = web_answer(message, request, use_ai=False)
-        if ans:
-            return ans, []
     print(f"⚠️ AI unavailable — using live skills instead ({(reply or 'no API key')[:70]})")
     if coding_request:
         return ("🛠️ I couldn't complete the coding analysis because the configured AI provider is unavailable. "
