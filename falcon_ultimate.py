@@ -2,7 +2,7 @@
 
 
 # ==================================================
-# 💜 PURPLE FALCON PH v6.9.4 — LIVE SKILLS + SELF-LEARNING + FILE ANALYST + NEWS + LOGO + IMAGE/VIDEO 🇵🇭
+# 💜 PURPLE FALCON PH v6.9.5 — LIVE SKILLS + SELF-LEARNING + FILE ANALYST + NEWS + LOGO + IMAGE/VIDEO 🇵🇭
 # ==================================================
 #   ✅ Live skills that learn: weather, exchange rates, world clock, Wikipedia, web search, web pages, earthquakes, dictionary,
 #      country facts, calculator — used whenever the AI model can't answer or is unreachable (falcon_skills.py)
@@ -268,14 +268,8 @@ try:
 except ImportError:
     websearch, WEB_STATUS = None, "⚠️ falcon_websearch.py not found next to this script"
 
-try:
-    import falcon_webreason as webreason
-    WEBREASON_STATUS = "✅ web reasoning" if getattr(webreason,"ENABLED",True) else "◻ off (PF_WEBREASON=0)"
-except Exception as e:
-    webreason, WEBREASON_STATUS = None, f"⚠️ falcon_webreason unavailable ({e.__class__.__name__})"
-
 print("=" * 60)
-print("💜 PURPLE FALCON PH v6.9.4 — PROTECTED 🇵🇭")
+print("💜 PURPLE FALCON PH v6.9.5 — PROTECTED 🇵🇭")
 if ENV_PATH:
     print(f"   .env file:     {'✅' if not ENV_PROBLEMS else '⚠️'} {ENV_LOADED} setting(s) read")
     for _p in ENV_PROBLEMS: print(f"                  ↳ {_p}")
@@ -367,7 +361,7 @@ def build_status_bar_html():
              ("Database", "Not Connected", False)]
     parts = "".join(f'<div class="pf-status-item{" ok" if ok else ""}"><span class="dot"></span><span>{name}: {state}</span></div>'
                     for name, state, ok in items)
-    return parts + '<div class="pf-status-item"><span>Purple Falcon AI v6.9.4</span></div>'
+    return parts + '<div class="pf-status-item"><span>Purple Falcon AI v6.9.5</span></div>'
 
 def build_sidebar_nav_html():
     soon = lambda icon, label: (f'<div class="pf-nav-item disabled"><span>{icon}</span>'
@@ -433,7 +427,7 @@ except Exception as _e:
     print(f"⚠️ Couldn't prepare chat avatar: {_e}")
 
 # ==================================================
-# SETTINGS LOCALIZATION v6.9.4
+# SETTINGS LOCALIZATION v6.9.5
 # ==================================================
 SETTINGS_LANGUAGES=[('English','en'),('Filipino / Tagalog','tl'),('Cebuano / Bisaya','ceb'),('Malay','ms'),('Indonesian','id'),('Spanish','es'),('French','fr'),('German','de'),('Portuguese','pt'),('Italian','it'),('Japanese / 日本語','ja'),('Korean / 한국어','ko')]
 SETTINGS_I18N={
@@ -463,7 +457,7 @@ UI_I18N={
 'it':{'new_chat':'Nuova Chat','workspace':'Area di lavoro','recent':'Recenti','soon':'Prossimamente','copy':'Copia','read':'Leggi ad alta voce','helpful':'Utile','not_helpful':'Non utile','insights':'Approfondimenti AI','run':'Esegui','running':'Esecuzione…','ready':'Pronto','offline':'Offline','not_connected':'Non connesso','knowledge':'Base di conoscenza','database':'Database','tools':'Strumenti','attach':'Allega file','clear':'Cancella','send':'Invia','stop':'Ferma','download':'Scarica','save':'Salva','reset':'Reimposta','close':'Chiudi','processing':'Elaborazione','uploading':'Caricamento','analyzing':'Analisi','generating':'Generazione','verifying':'Verifica'},
 'ja':{'new_chat':'新しいチャット','workspace':'ワークスペース','recent':'最近','soon':'近日公開','copy':'コピー','read':'読み上げ','helpful':'役に立った','not_helpful':'役に立たなかった','insights':'AI インサイト','run':'実行','running':'実行中…','ready':'準備完了','offline':'オフライン','not_connected':'未接続','knowledge':'ナレッジベース','database':'データベース','tools':'ツール','attach':'ファイルを添付','clear':'クリア','send':'送信','stop':'停止','download':'ダウンロード','save':'保存','reset':'リセット','close':'閉じる','processing':'処理中','uploading':'アップロード中','analyzing':'分析中','generating':'生成中','verifying':'確認中'},
 'ko':{'new_chat':'새 채팅','workspace':'작업 공간','recent':'최근','soon':'곧 제공','copy':'복사','read':'소리내어 읽기','helpful':'도움됨','not_helpful':'도움 안 됨','insights':'AI 인사이트','run':'실행','running':'실행 중…','ready':'준비됨','offline':'오프라인','not_connected':'연결 안 됨','knowledge':'지식 베이스','database':'데이터베이스','tools':'도구','attach':'파일 첨부','clear':'지우기','send':'보내기','stop':'중지','download':'다운로드','save':'저장','reset':'재설정','close':'닫기','processing':'처리 중','uploading':'업로드 중','analyzing':'분석 중','generating':'생성 중','verifying':'확인 중'}}
-# v6.9.4 dark-mode accessibility checks
+# v6.9.5 dark-mode accessibility checks
 # WCAG-style relative luminance / contrast helpers for deterministic theme checks.
 def _a11y_hex_rgb(value):
     v=str(value or '').strip().lstrip('#')
@@ -584,7 +578,7 @@ def localized_system_status_html(lang='en'):
 def localized_settings_html(lang='en'):
     x=SETTINGS_I18N.get(lang,SETTINGS_I18N['en']);return f'<div class="pf-settings-title" role="heading" aria-level="2">{x[0]}</div><div class="pf-settings-group-title">{x[2]}</div>'
 def localized_settings_detail_html(lang='en'):
-    x=SETTINGS_I18N.get(lang,SETTINGS_I18N['en']);status=x[7] if AI_CONFIGURED else x[8];on='On' if RUN_CODE_ENABLED else 'Off';return f'<div class="pf-settings-group-title">{x[4]}</div><div style="font-size:.78rem;color:var(--pf-text2)">🎤</div><div class="pf-settings-group-title">{x[5]}</div><div style="font-size:.78rem;color:var(--pf-text2);line-height:1.6">Purple Falcon AI v6.9.4<br>{x[6]}: {on}</div>'
+    x=SETTINGS_I18N.get(lang,SETTINGS_I18N['en']);status=x[7] if AI_CONFIGURED else x[8];on='On' if RUN_CODE_ENABLED else 'Off';return f'<div class="pf-settings-group-title">{x[4]}</div><div style="font-size:.78rem;color:var(--pf-text2)">🎤</div><div class="pf-settings-group-title">{x[5]}</div><div style="font-size:.78rem;color:var(--pf-text2);line-height:1.6">Purple Falcon AI v6.9.5<br>{x[6]}: {on}</div>'
 
 
 def localized_action_updates(lang='en'):
@@ -1038,7 +1032,7 @@ body.pf-tools-open #pf-tools-link { background: var(--pf-bg3) !important; color:
 .pf-status-item .dot { width: 6px; height: 6px; border-radius: 50%; background: #6b7280; flex: 0 0 auto; }
 .pf-status-item.ok .dot { background: #22c55e; }
 
-/* ---------- v6.9.4 unified rounded + fluid responsive shell ---------- */
+/* ---------- v6.9.5 unified rounded + fluid responsive shell ---------- */
 :root {
     --pf-radius-xs: clamp(8px, .55vw, 12px);
     --pf-radius-sm: clamp(12px, .8vw, 16px);
@@ -1107,7 +1101,7 @@ body.pf-tools-open #pf-tools-link { background: var(--pf-bg3) !important; color:
     #pf-app-shell { width: min(calc(100% - 32px), 1760px); }
     #pf-chat-scroll, #pf-composer-area { padding-inline: clamp(1.25rem, 2vw, 2.25rem) !important; }
 }
-/* ---------- v6.9.4 fluid spacing system ---------- */
+/* ---------- v6.9.5 fluid spacing system ---------- */
 :root {
     --pf-space-1: clamp(4px, .28vw, 6px);
     --pf-space-2: clamp(6px, .42vw, 9px);
@@ -1175,12 +1169,12 @@ body.pf-tools-open #pf-tools-link { background: var(--pf-bg3) !important; color:
 @media (min-width: 1600px) {
     :root { --pf-content-pad-x: clamp(1.4rem, 1.8vw, 2.3rem); --pf-section-gap: clamp(1rem, 1.15vw, 1.5rem); }
 }
-/* v6.9.4 theme selector + settings overflow hardening */
+/* v6.9.5 theme selector + settings overflow hardening */
 #pf-settings-panel { overflow-x: hidden !important; }
 #pf-settings-panel > *, #pf-settings-panel .form, #pf-settings-panel .wrap { max-width: 100% !important; min-width: 0 !important; }
 #pf-theme, #pf-settings-language { width: 100% !important; max-width: 100% !important; min-width: 0 !important; }
 #pf-theme .wrap, #pf-settings-language .wrap { overflow: visible !important; }
-/* ---------- v6.9.4 fullscreen shell + all-device settings select fix ---------- */
+/* ---------- v6.9.5 fullscreen shell + all-device settings select fix ---------- */
 html, body, gradio-app, .gradio-container {
     width: 100% !important; max-width: none !important;
     height: 100vh !important; height: 100svh !important; height: 100dvh !important;
@@ -1295,7 +1289,7 @@ body > [role="listbox"] {
     body.pf-sidebar-collapsed .pf-nav-label, body.pf-sidebar-collapsed .pf-nav-section-title, body.pf-sidebar-collapsed .pf-recent-list { display: block !important; }
 }
 @media (max-width: 640px) {
-    /* v6.9.4: touch-friendly bottom sheet plus explicit dark-theme mobile treatment */
+    /* v6.9.5: touch-friendly bottom sheet plus explicit dark-theme mobile treatment */
     #pf-settings-overlay { background: rgba(0,0,0,.52); backdrop-filter: blur(2px); }
     #pf-settings-panel {
         top: auto; right: 0; bottom: 0; left: 0;
@@ -1338,7 +1332,7 @@ body > [role="listbox"] {
     #pf-workspace-header { padding-left: .75rem !important; padding-right: .75rem !important; }
     #pf-status-bar { gap: .6rem !important; font-size: .64rem; flex-wrap: nowrap; overflow-x: auto; justify-content: flex-start !important; padding: 0 .6rem; }
 }
-/* v6.9.4 dark-mode mobile settings */
+/* v6.9.5 dark-mode mobile settings */
 @media (max-width: 640px) {
     :root[data-pf-theme="purple"], :root[data-pf-theme="sunset"], :root[data-pf-theme="ocean"], :root[data-pf-theme="emerald"] { color-scheme: dark; }
     :root[data-pf-theme="purple"] #pf-settings-panel, :root[data-pf-theme="sunset"] #pf-settings-panel, :root[data-pf-theme="ocean"] #pf-settings-panel, :root[data-pf-theme="emerald"] #pf-settings-panel {
@@ -1355,7 +1349,7 @@ body > [role="listbox"] {
     :root[data-pf-theme="purple"] #pf-settings-close, :root[data-pf-theme="sunset"] #pf-settings-close, :root[data-pf-theme="ocean"] #pf-settings-close, :root[data-pf-theme="emerald"] #pf-settings-close { color:var(--pf-text) !important; background:color-mix(in srgb,var(--pf-bg3) 86%,transparent) !important; border-radius:10px !important; }
     :root[data-pf-theme="purple"] #pf-settings-close:hover, :root[data-pf-theme="sunset"] #pf-settings-close:hover, :root[data-pf-theme="ocean"] #pf-settings-close:hover, :root[data-pf-theme="emerald"] #pf-settings-close:hover { background:color-mix(in srgb,var(--pf-accent) 24%,var(--pf-bg3)) !important; }
 }
-/* v6.9.4 accessibility additions for mobile dark settings */
+/* v6.9.5 accessibility additions for mobile dark settings */
 @media (max-width: 640px) {
     #pf-settings-panel button:focus-visible,
     #pf-settings-panel input:focus-visible,
@@ -1392,7 +1386,7 @@ body > [role="listbox"] {
     #pf-composer-links { margin-top: .15rem !important; }
     .pf-welcome { padding-top: .75rem; padding-bottom: .75rem; }
 }
-/* v6.9.4 final safe layout overrides */
+/* v6.9.5 final safe layout overrides */
 html,body,gradio-app,.gradio-container { width:100% !important; max-width:none !important; margin:0 !important; padding:0 !important; border-radius:0 !important; }
 .gradio-container { height:100dvh !important; min-height:100dvh !important; overflow:hidden !important; }
 #pf-app-shell { width:100% !important; max-width:none !important; height:100dvh !important; margin:0 !important; border:0 !important; border-radius:0 !important; box-shadow:none !important; }
@@ -1409,8 +1403,8 @@ html,body,gradio-app,.gradio-container { width:100% !important; max-width:none !
 #pf-settings-panel [role="listbox"],.gradio-container [role="listbox"],body > [role="listbox"] { z-index:10050 !important; pointer-events:auto !important; }
 @media (max-width:640px) and (orientation:portrait){#pf-settings-panel{top:auto !important;left:0 !important;right:0 !important;bottom:0 !important;width:100vw !important;max-width:100vw !important;height:min(88dvh,760px) !important;max-height:88dvh !important;transform:translateY(105%) !important;border-radius:20px 20px 0 0 !important}#pf-settings-panel.pf-open{transform:translateY(0) !important}}
 @media (orientation:landscape) and (max-height:700px) and (max-width:1180px){#pf-settings-panel{top:0 !important;left:auto !important;right:0 !important;bottom:0 !important;width:min(440px,92vw) !important;max-width:92vw !important;height:100dvh !important;max-height:100dvh !important;transform:translateX(105%) !important;border-radius:16px 0 0 16px !important}#pf-settings-panel.pf-open{transform:translateX(0) !important}}
-\n/* v6.9.4 Copilot-style composer, centered in chat column */\n#pf-main{position:relative !important}\n#pf-chat-scroll{padding-bottom:120px !important}\n#pf-composer-area{position:absolute !important;left:0 !important;right:0 !important;bottom:0 !important;z-index:35 !important;border-top:0 !important;background:linear-gradient(to bottom,transparent,var(--pf-bg) 35%) !important;max-height:none !important;overflow:visible !important}\n#pf-inputbar{width:min(980px,calc(100% - 2 * var(--pf-content-pad-x))) !important;max-width:980px !important;margin-left:auto !important;margin-right:auto !important;min-height:76px !important;border-radius:28px !important}\n@media(max-width:640px){#pf-chat-scroll{padding-bottom:98px !important}#pf-inputbar{width:calc(100% - 2 * var(--pf-content-pad-x)) !important;min-height:62px !important;border-radius:24px !important}}\n
-/* v6.9.4 definitive edge-to-edge viewport + tiny AI disclaimer */
+\n/* v6.9.5 Copilot-style composer, centered in chat column */\n#pf-main{position:relative !important}\n#pf-chat-scroll{padding-bottom:120px !important}\n#pf-composer-area{position:absolute !important;left:0 !important;right:0 !important;bottom:0 !important;z-index:35 !important;border-top:0 !important;background:linear-gradient(to bottom,transparent,var(--pf-bg) 35%) !important;max-height:none !important;overflow:visible !important}\n#pf-inputbar{width:min(980px,calc(100% - 2 * var(--pf-content-pad-x))) !important;max-width:980px !important;margin-left:auto !important;margin-right:auto !important;min-height:76px !important;border-radius:28px !important}\n@media(max-width:640px){#pf-chat-scroll{padding-bottom:98px !important}#pf-inputbar{width:calc(100% - 2 * var(--pf-content-pad-x)) !important;min-height:62px !important;border-radius:24px !important}}\n
+/* v6.9.5 definitive edge-to-edge viewport + tiny AI disclaimer */
 html, body, gradio-app, .gradio-container,
 .gradio-container > .main, .gradio-container > .wrap,
 .gradio-container .contain, #root, #root > div {
@@ -3118,9 +3112,27 @@ def falcon_local_reason(message, request=None):
     if _LOCAL_SIMPLE_COMPARE_RE.search(t) and topic and len(t.split())<=12: return f"May comparison kang tinatanong tungkol sa **{topic}**. Gagamitin ko muna ang context natin; external lookup lang kung humingi ka ng latest/current specification."
     return None
 
+_DAY_INTENT_RE=re.compile(r"^(?:what(?:'s| is)?\s+)?(?:the\s+)?day(?:\s+is\s+it)?(?:\s+today)?\??$|^what\s+day\s+(?:is\s+)?today\??$|^what\s+is\s+day\s+today\??$|^day\s+today\??$|^anong?\s+araw(?:\s+ngayon)?\??$|^ano\s+araw\s+ngayon\??$",re.I)
+_DATE_INTENT_RE=re.compile(r"^(?:what(?:'s| is)?\s+)?(?:the\s+)?date(?:\s+today)?\??$|^today'?s\s+date\??$|^today\s+date\??$|^date\s+today\??$|^anong?\s+petsa(?:\s+ngayon)?\??$",re.I)
+_TIME_INTENT_RE=re.compile(r"^(?:what(?:'s| is)?\s+)?(?:the\s+)?time(?:\s+(?:now|today))?\??$|^time\s+now\??$|^anong?\s+oras(?:\s+ngayon)?\??$|^oras\s+ngayon\??$",re.I)
+
+def resolve_deterministic_intent(message):
+    """High-precision pre-router for deterministic intents. Avoids entity/web hijacking."""
+    raw=(message or '').strip(); norm=re.sub(r'\s+',' ',raw).strip()
+    if not norm:return None
+    if norm == 'The Day Today' or re.match(r'^tell me about the day today\??$',norm,re.I): return None
+    if _DAY_INTENT_RE.match(norm):
+        now=datetime.now(); return {'type':'day','answer':f"Today is **{now.strftime('%A, %B %d, %Y')}**. 💜",'confidence':1.0}
+    if _DATE_INTENT_RE.match(norm):
+        now=datetime.now(); return {'type':'date','answer':f"Today's date is **{now.strftime('%B %d, %Y')}**. 💜",'confidence':1.0}
+    if _TIME_INTENT_RE.match(norm):
+        now=datetime.now(); return {'type':'time','answer':f"The current server time is **{now.strftime('%I:%M %p').lstrip('0')}**. 💜",'confidence':1.0}
+    return None
+
 def falcon_external_needed(message):
     """External retrieval is opt-in: explicit search/current-world need only."""
     t=(message or '')
+    if resolve_deterministic_intent(t): return False
     if is_public_information_meta(t): return False
     if _CONFIDENTIAL_META_RE.search(t): return False
     explicit=bool(re.search(r"\b(?:search|research|look ?up|find online|web|internet|source|citation|verify online)\b",t,re.I))
@@ -4725,67 +4737,6 @@ def analyze_large_code(message, code_inputs):
                 "The chunk findings are not available in this chat; please retry the request.")
     return final
 
-def _diagnostic_domain(item):
-    """Domain accounting resilient to URL-less normalized evidence."""
-    url=str((item or {}).get('url') or '').strip()
-    if url:
-        try:
-            d=urlparse(url).netloc.lower().removeprefix('www.')
-            if d:return d
-        except Exception:pass
-    source=str((item or {}).get('source') or '').strip().lower()
-    if source and source not in {'web','unknown','none','null'}:return source
-    return ''
-
-def run_web_brain_health_test(test_query="current Prime Minister of Japan official"):
-    checks=[]
-    def add(name,ok,detail='',severity='critical'):
-        checks.append({'name':name,'ok':bool(ok),'detail':str(detail or ''),'severity':severity})
-    wr_loaded=bool(webreason);add('WebReason module',wr_loaded)
-    wr_enabled=wr_loaded and bool(getattr(webreason,'ENABLED',True));add('WebReason enabled',wr_enabled)
-    ws_loaded=bool(websearch);add('WebSearch module',ws_loaded)
-    ws_enabled=ws_loaded and bool(getattr(websearch,'ENABLED',False));add('WebSearch enabled',ws_enabled)
-    raw=None;normalized=[];domains=set();synthesis=False;result_type='none'
-    if ws_enabled:
-        try:
-            raw=websearch.search(test_query);result_type=type(raw).__name__;add('Search execution',bool(raw and getattr(raw,'ok',True)),result_type)
-        except Exception as e:
-            print(f"⚠️ Web health search: {e.__class__.__name__}: {e}");add('Search execution',False,e.__class__.__name__)
-    else:add('Search execution',False,'WebSearch unavailable/disabled')
-    if wr_enabled and raw is not None:
-        try:
-            for item in webreason._extract_candidates(raw):
-                n=webreason.normalize_result(item)
-                if n:
-                    normalized.append(n);d=_diagnostic_domain(n)
-                    if d:domains.add(d)
-            add('Result normalization',bool(normalized),f'{len(normalized)} item(s)')
-            add('Independent sources',len(domains)>=2,f'{len(domains)} domain(s)','quality')
-        except Exception as e:
-            print(f"⚠️ Web health adapter: {e.__class__.__name__}: {e}");add('Result normalization',False,e.__class__.__name__);add('Independent sources',False,'adapter unavailable','quality')
-    else:add('Result normalization',False,'WebReason/raw result unavailable');add('Independent sources',False,'no normalized evidence','quality')
-    if wr_enabled:
-        try:
-            ans=webreason.web_reply(test_query,call_ai=call_ai,ai_failed_check=ai_failed,system_prompt=get_system_prompt(),history=[])
-            synthesis=bool(isinstance(ans,str) and ans.strip() and not webreason.reply_is_unsure(ans));add('WebReason synthesis',synthesis,'usable answer' if synthesis else 'no usable answer')
-        except Exception as e:
-            print(f"⚠️ Web health synthesis: {e.__class__.__name__}: {e}");add('WebReason synthesis',False,e.__class__.__name__)
-    else:add('WebReason synthesis',False,'WebReason unavailable/disabled')
-    critical=all(c['ok'] for c in checks if c['severity']=='critical')
-    diversity=next((c['ok'] for c in checks if c['name']=='Independent sources'),False)
-    status='healthy' if critical and diversity else ('degraded' if critical else 'failed')
-    return {'passed':critical,'status':status,'checks':checks,'normalized':len(normalized),'domains':len(domains),'synthesis':synthesis}
-
-def format_web_brain_health_test(test):
-    icon={'healthy':'✅','degraded':'⚠️','failed':'❌'}.get(test.get('status'),'❌')
-    lines=['🧠 **Web Brain Diagnostics**','']
-    for c in test['checks']:
-        mark='✅ PASS' if c['ok'] else ('⚠️ LIMITED' if c.get('severity')=='quality' else '❌ FAIL')
-        lines.append(f"{mark} — {c['name']}"+(f" ({c['detail']})" if c.get('detail') else ''))
-    lines += ['',f"**Web Brain: {test.get('status','failed').upper()} {icon}**"]
-    if test.get('status')=='degraded':lines.append('Retrieval and synthesis are operational, but source diversity is limited. Current answers should show lower confidence.')
-    return '\n'.join(lines)
-
 def web_answer(message, request=None, use_ai=True):
     """Safe web research: sanitize outbound query, isolate untrusted evidence, rank trust, then ground the brain."""
     if not websearch or not websearch.ENABLED or not PF_SAFE_WEB:
@@ -4977,7 +4928,7 @@ def apply_confidentiality_guard(reply):
         return confidential_falcon_reply()
     return text
 
-# ---- v6.9.4 public meta conversation regression tests ----
+# ---- v6.9.5 public meta conversation regression tests ----
 _PUBLIC_META_TRUE_CASES=[
 'pano ka ba kumukuha ng information?','paano ka kumukuha ng impormasyon?','how do you get information?','where do you get information?',
 'pano ka naghahanap ng info?','paano ka naghahanap ng data?','saan galing ang information mo?','saan ka kumukuha ng datos?',
@@ -5084,9 +5035,30 @@ def run_confidential_trigger_selftests(verbose=False):
     return {'passed':not failures,'failures':failures,'protected':len(_CONFIDENTIAL_TRUE_CASES),'negative':len(_CONFIDENTIAL_FALSE_POSITIVE_CASES),
             'multilingual_protected':len(_CONFIDENTIAL_MULTILINGUAL_TRUE_CASES),'multilingual_negative':len(_CONFIDENTIAL_MULTILINGUAL_FALSE_CASES)}
 
+def run_dynamic_intent_resolver_tests():
+    day=['what is Day Today?','what day today?','what day is today?','day today?','anong araw ngayon?','ano araw ngayon?']
+    date=['what is the date today?','today date?','anong petsa ngayon?']
+    time=['what time now?','what is the time?','anong oras ngayon?']
+    non=['The Day Today','tell me about The Day Today','latest AI news','Who is the current Prime Minister of Japan?','explain recursion']
+    failures=[]
+    for q in day:
+        r=resolve_deterministic_intent(q)
+        if not r or r['type']!='day':failures.append(('day',q,r))
+    for q in date:
+        r=resolve_deterministic_intent(q)
+        if not r or r['type']!='date':failures.append(('date',q,r))
+    for q in time:
+        r=resolve_deterministic_intent(q)
+        if not r or r['type']!='time':failures.append(('time',q,r))
+    for q in non:
+        if resolve_deterministic_intent(q):failures.append(('false',q))
+    return {'passed':not failures,'failures':failures,'cases':len(day)+len(date)+len(time)+len(non)}
+
 def chat_reply(message, paths, request=None):
-    if re.search(r"^\s*(?:web brain test|web brain health test|web diagnostic|web diagnostics)\s*[?!.]*$",message or '',re.I):
-        return format_web_brain_health_test(run_web_brain_health_test()), []
+    if not paths:
+        deterministic=resolve_deterministic_intent(message)
+        if deterministic:
+            return deterministic['answer'], []
     if not paths and is_conversation_reset_command(message):
         reset_conversation_state(request)
         return "💜🦅 **Bagong conversation na.** Na-clear ko na ang previous chat at active task context. Simula tayo ulit.", []
