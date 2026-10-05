@@ -4,7 +4,7 @@ import os, re, json, logging, tempfile
 from datetime import datetime
 from urllib.parse import urlparse
 
-APP_NAME='Purple Falcon PH'; VERSION='11.2.0'
+APP_NAME='Purple Falcon PH'; VERSION='12.0.0'
 ENABLED=os.getenv('PF_WEBREASON','1').strip().lower() not in ('0','false','no','off')
 MEMORY_FILE=os.getenv('PF_MEMORY_FILE','purple_falcon_memory.json')
 MAX_CONTEXT=8; MAX_RESULTS=8; MIN_SOURCES=2
@@ -88,11 +88,34 @@ def _extract_candidates(result):
 _MARKET_RE=re.compile(r"\b(?:stock|share|shares|price|quote|market|trading|ticker|nasdaq|nyse|after[- ]hours|pre[- ]market)\b",re.I)
 _TESLA_RE=re.compile(r"\b(?:tesla|tsla)\b",re.I)
 
+_NEWS_RE=re.compile(r"\b(?:news|balita|headline|breaking|latest developments?)\b",re.I)
+_WEATHER_RE=re.compile(r"\b(?:weather|forecast|temperature|rain|storm|typhoon|humidity)\b",re.I)
+_OFFICE_RE=re.compile(r"\b(?:pres(?:ident)?|presidente|prime\s+minister|pm|ceo|mayor|governor|minister|leader)\b",re.I)
+_MARKET_SOURCE_HINTS=('nasdaq','nyse','finance.yahoo','marketwatch','reuters','bloomberg','investing.com','google.com/finance','cnbc')
+_MARKET_VALUE_RE=re.compile(r"(?:\$\s?\d+(?:\.\d+)?|\b\d+(?:\.\d+)?\s?(?:usd|dollars?)\b)",re.I)
+
+def classify_web_intent(query):
+    q=(query or '').lower()
+    if _MARKET_RE.search(q): return 'market'
+    if _WEATHER_RE.search(q): return 'weather'
+    if _NEWS_RE.search(q): return 'news'
+    if _OFFICE_RE.search(q): return 'officeholder'
+    return 'general'
+
+def intent_queries(query):
+    q=clean_query(query); intent=classify_web_intent(q)
+    if intent=='market':
+        if _TESLA_RE.search(q):
+            return ['TSLA stock quote today NASDAQ','TSLA price today Yahoo Finance','Tesla TSLA stock price Reuters']
+        return [q+' stock quote today',q+' market price Reuters',q+' Yahoo Finance']
+    if intent=='officeholder': return [q+' official',q+' government official site',q+' Reuters']
+    if intent=='weather': return [q+' official weather',q+' forecast']
+    if intent=='news': return [q+' Reuters',q+' latest']
+    return [q,q+' official']
+
 def specialize_query(query):
-    q=clean_query(query)
-    if _TESLA_RE.search(q) and _MARKET_RE.search(q):
-        return 'TSLA Tesla stock price today NASDAQ quote'
-    return q
+    qs=intent_queries(query)
+    return qs[0] if qs else clean_query(query)
 
 def evidence_relevance(query,item):
     """Small deterministic relevance gate before evidence reaches synthesis."""
@@ -102,7 +125,9 @@ def evidence_relevance(query,item):
         if 'tsla' in text: score+=4
         if 'tesla' in text: score+=2
         if any(x in text for x in ('stock','share price','quote','nasdaq','market','trading')): score+=3
-        if any(x in text for x in ('autopilot','nikola tesla','biography','inventor')): score-=5
+        if any(x in text for x in _MARKET_SOURCE_HINTS): score+=3
+        if _MARKET_VALUE_RE.search(text): score+=2
+        if any(x in text for x in ('autopilot','nikola tesla','biography','inventor','history of tesla')): score-=7
         return score
     # Generic lexical relevance: require at least one meaningful query token.
     tokens={w for w in re.findall(r'\b[a-z0-9]{4,}\b',q) if w not in {'current','latest','today','official','what','who','when','where','this','that'}}
@@ -139,16 +164,19 @@ def search_web_fallback(query_list):
     return out[:MAX_RESULTS] or None
 
 def search_sources(query_list):
-    out=[]; seen=set()
+    """Intent-aware retrieval. For fresh categories, query several formulations then merge/dedupe."""
+    out=[]; seen=set(); expanded=[]
     for q in query_list:
-        effective=specialize_query(q)
+        for eq in intent_queries(q):
+            if eq not in expanded: expanded.append(eq)
+    for effective in expanded[:6]:
         batch=search_via_websearch(effective) or search_web_fallback([effective]) or []
         batch=filter_relevant(effective,batch)
         for item in batch:
             key=item.get('url') or (item.get('title'),item.get('body','')[:100])
-            if key in seen:continue
-            seen.add(key);out.append(item)
-            if len(out)>=MAX_RESULTS:return out
+            if key in seen: continue
+            seen.add(key); out.append(item)
+            if len(out)>=MAX_RESULTS: return out
     return out or None
 
 class ResearchAgent:
@@ -170,6 +198,14 @@ class ResearchAgent:
         if len(domains)>=3:self.confidence_score=CONFIDENCE_HIGH
         elif len(domains)>=2:self.confidence_score=CONFIDENCE_MEDIUM
         else:self.confidence_score=CONFIDENCE_LOW
+    def evidence_sufficient(self,question):
+        intent=classify_web_intent(question)
+        if not self.sources: return False
+        if intent=='market':
+            relevant=[s for s in self.sources if evidence_relevance(question,s)>=5]
+            valued=[s for s in relevant if _MARKET_VALUE_RE.search((s.get('title','')+' '+s.get('body','')))]
+            return bool(valued)
+        return True
     def evidence_answer(self,question):
         label='HIGH' if self.confidence_score>=CONFIDENCE_HIGH else ('MEDIUM' if self.confidence_score>=CONFIDENCE_MEDIUM else 'LOW')
         lines=[f'💜 **Web research evidence** — Confidence: **{label}**','']
@@ -197,11 +233,13 @@ def web_reply(message,call_ai=None,ai_failed_check=None,system_prompt=None,brain
     if not sources:return None
     for x in sources:agent.add_source(x)
     agent.cross_check_facts()
+    if not agent.evidence_sufficient(query):
+        return "💜 I found live web results, but none of the retrieved evidence contains a reliable current market value for the requested quote. I won't substitute Wikipedia, unrelated Tesla pages, or remembered model knowledge for a live price."
     # Preferred synthesis: use the main brain only if available. If absent, provide structured evidence, not failure.
     if call_ai:
         try:
             evidence='\n\n'.join(f"[{i}] {s['title']}\n{s['body']}\nURL: {s['url']}" for i,s in enumerate(agent.sources[:6],1))
-            msgs=[{'role':'system','content':(system_prompt or '')+'\nCURRENT-WEB GROUNDING RULES: Use ONLY the supplied current web evidence for current facts. Do not claim you lack web/current-data access because fresh evidence has already been supplied. Never replace missing current facts with remembered/model knowledge. If the evidence does not contain the requested current value, explicitly say the current value could not be verified from the retrieved evidence. Answer naturally and cite [1], [2] only where supported.'}]
+            msgs=[{'role':'system','content':(system_prompt or '')+'\nCURRENT-WEB GROUNDING RULES: Use ONLY the supplied current web evidence for current facts. Do not claim Purple Falcon lacks web access or live-feed capability. Describe limitations only in terms of the retrieved evidence. Fresh web evidence has already been supplied. Never replace missing current facts with remembered/model knowledge. If the evidence does not contain the requested current value, explicitly say the current value could not be verified from the retrieved evidence. Answer naturally and cite [1], [2] only where supported.'}]
             msgs+=(history or [])[-4:];msgs.append({'role':'user','content':f'Question: {query}\n\nCurrent web evidence:\n{evidence}'})
             ai=call_ai(msgs)
             failed=ai_failed_check(ai) if ai_failed_check else not bool(ai)
@@ -216,13 +254,18 @@ def self_test():
             self.ok=True;self.provider='test';self.trace=[]
     assert len(_extract_candidates(WR()))==1
     n=normalize_result(_extract_candidates(WR())[0]);assert n['body']=='Current prime minister evidence'
-    assert specialize_query('What is Tesla stock price now?')=='TSLA Tesla stock price today NASDAQ quote'
+    assert specialize_query('What is Tesla stock price now?')=='TSLA stock quote today NASDAQ'
     good={'title':'Tesla (TSLA) Stock Quote','body':'TSLA stock market quote','source':'finance','url':'https://finance.example/tsla'}
     bad={'title':'Tesla Autopilot','body':'driver assistance feature','source':'wiki','url':'https://example/autopilot'}
     assert evidence_relevance('Tesla stock price now',good)>0
     assert evidence_relevance('Tesla stock price now',bad)<=0
     assert filter_relevant('Tesla stock price now',[bad,good])==[good]
+    assert classify_web_intent('Tesla stock price now')=='market'
+    assert any('Yahoo Finance' in q for q in intent_queries('Tesla stock price now'))
+    a=ResearchAgent('en'); a.add_source(good); assert not a.evidence_sufficient('Tesla stock price now')
+    priced={'title':'Tesla TSLA $450.25 stock quote','body':'TSLA quote $450.25 NASDAQ market','source':'finance.yahoo.com','url':'https://finance.yahoo.com/quote/TSLA'}
+    a=ResearchAgent('en'); a.add_source(priced); assert a.evidence_sufficient('Tesla stock price now')
     return True
 
-__all__=['ENABLED','WEBSEARCH_AVAILABLE','SEARCH_AVAILABLE','web_reply','reply_is_unsure','search_sources','ResearchAgent','self_test','_extract_candidates','normalize_result','specialize_query','filter_relevant','evidence_relevance']
+__all__=['ENABLED','WEBSEARCH_AVAILABLE','SEARCH_AVAILABLE','web_reply','reply_is_unsure','search_sources','ResearchAgent','self_test','_extract_candidates','normalize_result','specialize_query','filter_relevant','evidence_relevance','classify_web_intent','intent_queries']
 if __name__=='__main__':print('self_test:','PASS' if self_test() else 'FAIL')
