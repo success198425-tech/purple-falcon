@@ -2,7 +2,7 @@
 
 
 # ==================================================
-# 💜 PURPLE FALCON PH v6.9.5 — LIVE SKILLS + SELF-LEARNING + FILE ANALYST + NEWS + LOGO + IMAGE/VIDEO 🇵🇭
+# 💜 PURPLE FALCON PH v6.10.0 — LIVE SKILLS + SELF-LEARNING + FILE ANALYST + NEWS + LOGO + IMAGE/VIDEO 🇵🇭
 # ==================================================
 #   ✅ Live skills that learn: weather, exchange rates, world clock, Wikipedia, web search, web pages, earthquakes, dictionary,
 #      country facts, calculator — used whenever the AI model can't answer or is unreachable (falcon_skills.py)
@@ -268,8 +268,17 @@ try:
 except ImportError:
     websearch, WEB_STATUS = None, "⚠️ falcon_websearch.py not found next to this script"
 
+# ==================================================
+# 🧠 LOCAL LEARNING BRAIN  (falcon_reasoning.py)
+# ==================================================
+try:
+    import falcon_reasoning as localbrain
+    LOCAL_BRAIN_STATUS = "✅ local learning brain"
+except Exception as e:
+    localbrain, LOCAL_BRAIN_STATUS = None, f"⚠️ falcon_reasoning unavailable ({e.__class__.__name__})"
+
 print("=" * 60)
-print("💜 PURPLE FALCON PH v6.9.5 — PROTECTED 🇵🇭")
+print("💜 PURPLE FALCON PH v6.10.0 — PROTECTED 🇵🇭")
 if ENV_PATH:
     print(f"   .env file:     {'✅' if not ENV_PROBLEMS else '⚠️'} {ENV_LOADED} setting(s) read")
     for _p in ENV_PROBLEMS: print(f"                  ↳ {_p}")
@@ -361,7 +370,7 @@ def build_status_bar_html():
              ("Database", "Not Connected", False)]
     parts = "".join(f'<div class="pf-status-item{" ok" if ok else ""}"><span class="dot"></span><span>{name}: {state}</span></div>'
                     for name, state, ok in items)
-    return parts + '<div class="pf-status-item"><span>Purple Falcon AI v6.9.5</span></div>'
+    return parts + '<div class="pf-status-item"><span>Purple Falcon AI v6.10.0</span></div>'
 
 def build_sidebar_nav_html():
     soon = lambda icon, label: (f'<div class="pf-nav-item disabled"><span>{icon}</span>'
@@ -427,7 +436,7 @@ except Exception as _e:
     print(f"⚠️ Couldn't prepare chat avatar: {_e}")
 
 # ==================================================
-# SETTINGS LOCALIZATION v6.9.5
+# SETTINGS LOCALIZATION v6.10.0
 # ==================================================
 SETTINGS_LANGUAGES=[('English','en'),('Filipino / Tagalog','tl'),('Cebuano / Bisaya','ceb'),('Malay','ms'),('Indonesian','id'),('Spanish','es'),('French','fr'),('German','de'),('Portuguese','pt'),('Italian','it'),('Japanese / 日本語','ja'),('Korean / 한국어','ko')]
 SETTINGS_I18N={
@@ -457,7 +466,7 @@ UI_I18N={
 'it':{'new_chat':'Nuova Chat','workspace':'Area di lavoro','recent':'Recenti','soon':'Prossimamente','copy':'Copia','read':'Leggi ad alta voce','helpful':'Utile','not_helpful':'Non utile','insights':'Approfondimenti AI','run':'Esegui','running':'Esecuzione…','ready':'Pronto','offline':'Offline','not_connected':'Non connesso','knowledge':'Base di conoscenza','database':'Database','tools':'Strumenti','attach':'Allega file','clear':'Cancella','send':'Invia','stop':'Ferma','download':'Scarica','save':'Salva','reset':'Reimposta','close':'Chiudi','processing':'Elaborazione','uploading':'Caricamento','analyzing':'Analisi','generating':'Generazione','verifying':'Verifica'},
 'ja':{'new_chat':'新しいチャット','workspace':'ワークスペース','recent':'最近','soon':'近日公開','copy':'コピー','read':'読み上げ','helpful':'役に立った','not_helpful':'役に立たなかった','insights':'AI インサイト','run':'実行','running':'実行中…','ready':'準備完了','offline':'オフライン','not_connected':'未接続','knowledge':'ナレッジベース','database':'データベース','tools':'ツール','attach':'ファイルを添付','clear':'クリア','send':'送信','stop':'停止','download':'ダウンロード','save':'保存','reset':'リセット','close':'閉じる','processing':'処理中','uploading':'アップロード中','analyzing':'分析中','generating':'生成中','verifying':'確認中'},
 'ko':{'new_chat':'새 채팅','workspace':'작업 공간','recent':'최근','soon':'곧 제공','copy':'복사','read':'소리내어 읽기','helpful':'도움됨','not_helpful':'도움 안 됨','insights':'AI 인사이트','run':'실행','running':'실행 중…','ready':'준비됨','offline':'오프라인','not_connected':'연결 안 됨','knowledge':'지식 베이스','database':'데이터베이스','tools':'도구','attach':'파일 첨부','clear':'지우기','send':'보내기','stop':'중지','download':'다운로드','save':'저장','reset':'재설정','close':'닫기','processing':'처리 중','uploading':'업로드 중','analyzing':'분석 중','generating':'생성 중','verifying':'확인 중'}}
-# v6.9.5 dark-mode accessibility checks
+# v6.10.0 dark-mode accessibility checks
 # WCAG-style relative luminance / contrast helpers for deterministic theme checks.
 def _a11y_hex_rgb(value):
     v=str(value or '').strip().lstrip('#')
@@ -578,7 +587,7 @@ def localized_system_status_html(lang='en'):
 def localized_settings_html(lang='en'):
     x=SETTINGS_I18N.get(lang,SETTINGS_I18N['en']);return f'<div class="pf-settings-title" role="heading" aria-level="2">{x[0]}</div><div class="pf-settings-group-title">{x[2]}</div>'
 def localized_settings_detail_html(lang='en'):
-    x=SETTINGS_I18N.get(lang,SETTINGS_I18N['en']);status=x[7] if AI_CONFIGURED else x[8];on='On' if RUN_CODE_ENABLED else 'Off';return f'<div class="pf-settings-group-title">{x[4]}</div><div style="font-size:.78rem;color:var(--pf-text2)">🎤</div><div class="pf-settings-group-title">{x[5]}</div><div style="font-size:.78rem;color:var(--pf-text2);line-height:1.6">Purple Falcon AI v6.9.5<br>{x[6]}: {on}</div>'
+    x=SETTINGS_I18N.get(lang,SETTINGS_I18N['en']);status=x[7] if AI_CONFIGURED else x[8];on='On' if RUN_CODE_ENABLED else 'Off';return f'<div class="pf-settings-group-title">{x[4]}</div><div style="font-size:.78rem;color:var(--pf-text2)">🎤</div><div class="pf-settings-group-title">{x[5]}</div><div style="font-size:.78rem;color:var(--pf-text2);line-height:1.6">Purple Falcon AI v6.10.0<br>{x[6]}: {on}</div>'
 
 
 def localized_action_updates(lang='en'):
@@ -1032,7 +1041,7 @@ body.pf-tools-open #pf-tools-link { background: var(--pf-bg3) !important; color:
 .pf-status-item .dot { width: 6px; height: 6px; border-radius: 50%; background: #6b7280; flex: 0 0 auto; }
 .pf-status-item.ok .dot { background: #22c55e; }
 
-/* ---------- v6.9.5 unified rounded + fluid responsive shell ---------- */
+/* ---------- v6.10.0 unified rounded + fluid responsive shell ---------- */
 :root {
     --pf-radius-xs: clamp(8px, .55vw, 12px);
     --pf-radius-sm: clamp(12px, .8vw, 16px);
@@ -1101,7 +1110,7 @@ body.pf-tools-open #pf-tools-link { background: var(--pf-bg3) !important; color:
     #pf-app-shell { width: min(calc(100% - 32px), 1760px); }
     #pf-chat-scroll, #pf-composer-area { padding-inline: clamp(1.25rem, 2vw, 2.25rem) !important; }
 }
-/* ---------- v6.9.5 fluid spacing system ---------- */
+/* ---------- v6.10.0 fluid spacing system ---------- */
 :root {
     --pf-space-1: clamp(4px, .28vw, 6px);
     --pf-space-2: clamp(6px, .42vw, 9px);
@@ -1169,12 +1178,12 @@ body.pf-tools-open #pf-tools-link { background: var(--pf-bg3) !important; color:
 @media (min-width: 1600px) {
     :root { --pf-content-pad-x: clamp(1.4rem, 1.8vw, 2.3rem); --pf-section-gap: clamp(1rem, 1.15vw, 1.5rem); }
 }
-/* v6.9.5 theme selector + settings overflow hardening */
+/* v6.10.0 theme selector + settings overflow hardening */
 #pf-settings-panel { overflow-x: hidden !important; }
 #pf-settings-panel > *, #pf-settings-panel .form, #pf-settings-panel .wrap { max-width: 100% !important; min-width: 0 !important; }
 #pf-theme, #pf-settings-language { width: 100% !important; max-width: 100% !important; min-width: 0 !important; }
 #pf-theme .wrap, #pf-settings-language .wrap { overflow: visible !important; }
-/* ---------- v6.9.5 fullscreen shell + all-device settings select fix ---------- */
+/* ---------- v6.10.0 fullscreen shell + all-device settings select fix ---------- */
 html, body, gradio-app, .gradio-container {
     width: 100% !important; max-width: none !important;
     height: 100vh !important; height: 100svh !important; height: 100dvh !important;
@@ -1289,7 +1298,7 @@ body > [role="listbox"] {
     body.pf-sidebar-collapsed .pf-nav-label, body.pf-sidebar-collapsed .pf-nav-section-title, body.pf-sidebar-collapsed .pf-recent-list { display: block !important; }
 }
 @media (max-width: 640px) {
-    /* v6.9.5: touch-friendly bottom sheet plus explicit dark-theme mobile treatment */
+    /* v6.10.0: touch-friendly bottom sheet plus explicit dark-theme mobile treatment */
     #pf-settings-overlay { background: rgba(0,0,0,.52); backdrop-filter: blur(2px); }
     #pf-settings-panel {
         top: auto; right: 0; bottom: 0; left: 0;
@@ -1332,7 +1341,7 @@ body > [role="listbox"] {
     #pf-workspace-header { padding-left: .75rem !important; padding-right: .75rem !important; }
     #pf-status-bar { gap: .6rem !important; font-size: .64rem; flex-wrap: nowrap; overflow-x: auto; justify-content: flex-start !important; padding: 0 .6rem; }
 }
-/* v6.9.5 dark-mode mobile settings */
+/* v6.10.0 dark-mode mobile settings */
 @media (max-width: 640px) {
     :root[data-pf-theme="purple"], :root[data-pf-theme="sunset"], :root[data-pf-theme="ocean"], :root[data-pf-theme="emerald"] { color-scheme: dark; }
     :root[data-pf-theme="purple"] #pf-settings-panel, :root[data-pf-theme="sunset"] #pf-settings-panel, :root[data-pf-theme="ocean"] #pf-settings-panel, :root[data-pf-theme="emerald"] #pf-settings-panel {
@@ -1349,7 +1358,7 @@ body > [role="listbox"] {
     :root[data-pf-theme="purple"] #pf-settings-close, :root[data-pf-theme="sunset"] #pf-settings-close, :root[data-pf-theme="ocean"] #pf-settings-close, :root[data-pf-theme="emerald"] #pf-settings-close { color:var(--pf-text) !important; background:color-mix(in srgb,var(--pf-bg3) 86%,transparent) !important; border-radius:10px !important; }
     :root[data-pf-theme="purple"] #pf-settings-close:hover, :root[data-pf-theme="sunset"] #pf-settings-close:hover, :root[data-pf-theme="ocean"] #pf-settings-close:hover, :root[data-pf-theme="emerald"] #pf-settings-close:hover { background:color-mix(in srgb,var(--pf-accent) 24%,var(--pf-bg3)) !important; }
 }
-/* v6.9.5 accessibility additions for mobile dark settings */
+/* v6.10.0 accessibility additions for mobile dark settings */
 @media (max-width: 640px) {
     #pf-settings-panel button:focus-visible,
     #pf-settings-panel input:focus-visible,
@@ -1386,7 +1395,7 @@ body > [role="listbox"] {
     #pf-composer-links { margin-top: .15rem !important; }
     .pf-welcome { padding-top: .75rem; padding-bottom: .75rem; }
 }
-/* v6.9.5 final safe layout overrides */
+/* v6.10.0 final safe layout overrides */
 html,body,gradio-app,.gradio-container { width:100% !important; max-width:none !important; margin:0 !important; padding:0 !important; border-radius:0 !important; }
 .gradio-container { height:100dvh !important; min-height:100dvh !important; overflow:hidden !important; }
 #pf-app-shell { width:100% !important; max-width:none !important; height:100dvh !important; margin:0 !important; border:0 !important; border-radius:0 !important; box-shadow:none !important; }
@@ -1403,8 +1412,8 @@ html,body,gradio-app,.gradio-container { width:100% !important; max-width:none !
 #pf-settings-panel [role="listbox"],.gradio-container [role="listbox"],body > [role="listbox"] { z-index:10050 !important; pointer-events:auto !important; }
 @media (max-width:640px) and (orientation:portrait){#pf-settings-panel{top:auto !important;left:0 !important;right:0 !important;bottom:0 !important;width:100vw !important;max-width:100vw !important;height:min(88dvh,760px) !important;max-height:88dvh !important;transform:translateY(105%) !important;border-radius:20px 20px 0 0 !important}#pf-settings-panel.pf-open{transform:translateY(0) !important}}
 @media (orientation:landscape) and (max-height:700px) and (max-width:1180px){#pf-settings-panel{top:0 !important;left:auto !important;right:0 !important;bottom:0 !important;width:min(440px,92vw) !important;max-width:92vw !important;height:100dvh !important;max-height:100dvh !important;transform:translateX(105%) !important;border-radius:16px 0 0 16px !important}#pf-settings-panel.pf-open{transform:translateX(0) !important}}
-\n/* v6.9.5 Copilot-style composer, centered in chat column */\n#pf-main{position:relative !important}\n#pf-chat-scroll{padding-bottom:120px !important}\n#pf-composer-area{position:absolute !important;left:0 !important;right:0 !important;bottom:0 !important;z-index:35 !important;border-top:0 !important;background:linear-gradient(to bottom,transparent,var(--pf-bg) 35%) !important;max-height:none !important;overflow:visible !important}\n#pf-inputbar{width:min(980px,calc(100% - 2 * var(--pf-content-pad-x))) !important;max-width:980px !important;margin-left:auto !important;margin-right:auto !important;min-height:76px !important;border-radius:28px !important}\n@media(max-width:640px){#pf-chat-scroll{padding-bottom:98px !important}#pf-inputbar{width:calc(100% - 2 * var(--pf-content-pad-x)) !important;min-height:62px !important;border-radius:24px !important}}\n
-/* v6.9.5 definitive edge-to-edge viewport + tiny AI disclaimer */
+\n/* v6.10.0 Copilot-style composer, centered in chat column */\n#pf-main{position:relative !important}\n#pf-chat-scroll{padding-bottom:120px !important}\n#pf-composer-area{position:absolute !important;left:0 !important;right:0 !important;bottom:0 !important;z-index:35 !important;border-top:0 !important;background:linear-gradient(to bottom,transparent,var(--pf-bg) 35%) !important;max-height:none !important;overflow:visible !important}\n#pf-inputbar{width:min(980px,calc(100% - 2 * var(--pf-content-pad-x))) !important;max-width:980px !important;margin-left:auto !important;margin-right:auto !important;min-height:76px !important;border-radius:28px !important}\n@media(max-width:640px){#pf-chat-scroll{padding-bottom:98px !important}#pf-inputbar{width:calc(100% - 2 * var(--pf-content-pad-x)) !important;min-height:62px !important;border-radius:24px !important}}\n
+/* v6.10.0 definitive edge-to-edge viewport + tiny AI disclaimer */
 html, body, gradio-app, .gradio-container,
 .gradio-container > .main, .gradio-container > .wrap,
 .gradio-container .contain, #root, #root > div {
@@ -3112,6 +3121,44 @@ def falcon_local_reason(message, request=None):
     if _LOCAL_SIMPLE_COMPARE_RE.search(t) and topic and len(t.split())<=12: return f"May comparison kang tinatanong tungkol sa **{topic}**. Gagamitin ko muna ang context natin; external lookup lang kung humingi ka ng latest/current specification."
     return None
 
+def local_brain_command(message):
+    """Explicit user-controlled local learning commands. Returns None when not a command."""
+    if not localbrain: return None
+    try:
+        return localbrain.handle_local_command(message)
+    except Exception as e:
+        print(f"⚠️ Local Brain command failed: {e.__class__.__name__}: {e}")
+        return None
+
+def local_brain_answer(message):
+    """High-confidence local retrieval only. Current/fresh queries are rejected inside Local Brain."""
+    if not localbrain: return None
+    try:
+        hit=localbrain.local_answer(message)
+        if not hit: return None
+        score=float(hit.get('confidence') or 0.0)
+        if score < float(getattr(localbrain,'MIN_RELEVANCE',0.42)): return None
+        return f"🧠 **Local Brain** — {hit.get('answer','')}\n\n_Local relevance: {score:.0%} · Source: {hit.get('source','local')}_"
+    except Exception as e:
+        print(f"⚠️ Local Brain retrieval failed: {e.__class__.__name__}: {e}")
+        return None
+
+def local_brain_health():
+    if not localbrain: return '🧠 **Local Brain Diagnostics**\n\n❌ FAIL — module unavailable'
+    try:
+        test_ok=bool(localbrain.self_test())
+        st=localbrain.knowledge_status()
+        return ("🧠 **Local Brain Diagnostics**\n\n"
+                f"{'✅ PASS' if test_ok else '❌ FAIL'} — relevance/self-test\n"
+                f"✅ PASS — persistence ({st.get('file')})\n"
+                f"✅ PASS — verified knowledge: {st.get('verified',0)}\n"
+                f"✅ PASS — memories: {st.get('memories',0)}\n"
+                f"ℹ️ Candidates awaiting approval: {st.get('candidates',0)}\n"
+                f"ℹ️ Relevance threshold: {float(st.get('threshold',0)):.2f}")
+    except Exception as e:
+        print(f"⚠️ Local Brain health failed: {e.__class__.__name__}: {e}")
+        return '🧠 **Local Brain Diagnostics**\n\n❌ FAIL — runtime self-test failed'
+
 _DAY_INTENT_RE=re.compile(r"^(?:what(?:'s| is)?\s+)?(?:the\s+)?day(?:\s+is\s+it)?(?:\s+today)?\??$|^what\s+day\s+(?:is\s+)?today\??$|^what\s+is\s+day\s+today\??$|^day\s+today\??$|^anong?\s+araw(?:\s+ngayon)?\??$|^ano\s+araw\s+ngayon\??$",re.I)
 _DATE_INTENT_RE=re.compile(r"^(?:what(?:'s| is)?\s+)?(?:the\s+)?date(?:\s+today)?\??$|^today'?s\s+date\??$|^today\s+date\??$|^date\s+today\??$|^anong?\s+petsa(?:\s+ngayon)?\??$",re.I)
 _TIME_INTENT_RE=re.compile(r"^(?:what(?:'s| is)?\s+)?(?:the\s+)?time(?:\s+(?:now|today))?\??$|^time\s+now\??$|^anong?\s+oras(?:\s+ngayon)?\??$|^oras\s+ngayon\??$",re.I)
@@ -3132,6 +3179,8 @@ def resolve_deterministic_intent(message):
 def falcon_external_needed(message):
     """External retrieval is opt-in: explicit search/current-world need only."""
     t=(message or '')
+    if re.match(r'^\s*/(?:learn|remember|forget|knowledge)\b',t,re.I): return False
+    if re.match(r'^\s*local brain test\s*[?!.]*$',t,re.I): return False
     if resolve_deterministic_intent(t): return False
     if is_public_information_meta(t): return False
     if _CONFIDENTIAL_META_RE.search(t): return False
@@ -4928,7 +4977,7 @@ def apply_confidentiality_guard(reply):
         return confidential_falcon_reply()
     return text
 
-# ---- v6.9.5 public meta conversation regression tests ----
+# ---- v6.10.0 public meta conversation regression tests ----
 _PUBLIC_META_TRUE_CASES=[
 'pano ka ba kumukuha ng information?','paano ka kumukuha ng impormasyon?','how do you get information?','where do you get information?',
 'pano ka naghahanap ng info?','paano ka naghahanap ng data?','saan galing ang information mo?','saan ka kumukuha ng datos?',
@@ -5054,11 +5103,34 @@ def run_dynamic_intent_resolver_tests():
         if resolve_deterministic_intent(q):failures.append(('false',q))
     return {'passed':not failures,'failures':failures,'cases':len(day)+len(date)+len(time)+len(non)}
 
+def run_local_brain_integration_tests():
+    failures=[]
+    if not localbrain: return {'passed':False,'failures':['module unavailable']}
+    try:
+        if not localbrain.self_test(): failures.append('localbrain self-test')
+        if localbrain.retrieve_local('Tesla stock now') != []: failures.append('freshness barrier')
+        unrelated=localbrain.relevance_score('Tesla stock now',{'content':'Philippine Tech Vision','tags':[]})
+        if unrelated >= localbrain.MIN_RELEVANCE: failures.append('unrelated relevance')
+        if falcon_external_needed('/knowledge'): failures.append('command routed external')
+        if falcon_external_needed('local brain test'): failures.append('health routed external')
+    except Exception as e: failures.append(e.__class__.__name__)
+    return {'passed':not failures,'failures':failures}
+
 def chat_reply(message, paths, request=None):
     if not paths:
+        if re.search(r"^\s*local brain test\s*[?!.]*$",message or '',re.I):
+            return local_brain_health(), []
+        cmd_reply=local_brain_command(message)
+        if cmd_reply:
+            return cmd_reply, []
         deterministic=resolve_deterministic_intent(message)
         if deterministic:
             return deterministic['answer'], []
+        # Never let persistent local memory answer a current-world request.
+        if not falcon_external_needed(message):
+            lb_reply=local_brain_answer(message)
+            if lb_reply:
+                return lb_reply, []
     if not paths and is_conversation_reset_command(message):
         reset_conversation_state(request)
         return "💜🦅 **Bagong conversation na.** Na-clear ko na ang previous chat at active task context. Simula tayo ulit.", []
@@ -5153,6 +5225,9 @@ def chat_reply(message, paths, request=None):
     reply = call_ai(_ai_messages(ai_message, paths, request)) if AI_CONFIGURED else ""
     reply = apply_confidentiality_guard(reply)
     if reply == CHAT_PROVIDER_FALLBACK:
+        lb_reply = local_brain_answer(message) if not falcon_external_needed(message) else None
+        if lb_reply:
+            return lb_reply, []
         local_reason = falcon_local_reason(message, request)
         if local_reason:
             return local_reason, []
