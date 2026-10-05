@@ -4,7 +4,7 @@ import os, re, json, logging, tempfile
 from datetime import datetime
 from urllib.parse import urlparse
 
-APP_NAME='Purple Falcon PH'; VERSION='12.0.0'
+APP_NAME='Purple Falcon PH'; VERSION='13.0.0'
 ENABLED=os.getenv('PF_WEBREASON','1').strip().lower() not in ('0','false','no','off')
 MEMORY_FILE=os.getenv('PF_MEMORY_FILE','purple_falcon_memory.json')
 MAX_CONTEXT=8; MAX_RESULTS=8; MIN_SOURCES=2
@@ -179,6 +179,70 @@ def search_sources(query_list):
             if len(out)>=MAX_RESULTS: return out
     return out or None
 
+_FRESH_RE=re.compile(r"\b(?:current|currently|latest|today|now|ngayon|recent|updated?|as of|this week|this month|this year)\b",re.I)
+_NUMERIC_RE=re.compile(r"\b(?:price|stock|quote|score|rate|temperature|weather|percent|percentage|how much|market cap|volume)\b",re.I)
+
+def analyze_prompt(query):
+    """Dynamic reasoning policy for every prompt, not a collection of one-off prompt handlers."""
+    q=clean_query(query); intent=classify_web_intent(q)
+    fresh=bool(_FRESH_RE.search(q) or intent in {'market','weather','news','officeholder'})
+    numeric=bool(_NUMERIC_RE.search(q) or intent=='market')
+    return {
+        'query':q,'intent':intent,'fresh':fresh,'numeric':numeric,
+        'min_domains': 2 if fresh else 1,
+        'requires_value': intent=='market' and numeric,
+        'prefer_official': intent in {'officeholder','weather'},
+    }
+
+def source_quality(policy,item):
+    text=' '.join(str((item or {}).get(k) or '') for k in ('title','body','source','url')).lower()
+    domain=urlparse(str((item or {}).get('url') or '')).netloc.lower().removeprefix('www.')
+    score=evidence_relevance(policy['query'],item)
+    if policy['intent']=='officeholder':
+        if any(x in domain for x in ('gov','go.jp','kantei.go.jp')): score+=8
+        if any(x in domain for x in ('reuters.com','apnews.com')): score+=5
+        if 'wikipedia.org' in domain: score-=3
+    elif policy['intent']=='market':
+        if any(x in domain for x in _MARKET_SOURCE_HINTS): score+=6
+        if 'wikipedia.org' in domain: score-=10
+        if _MARKET_VALUE_RE.search(text): score+=4
+    elif policy['intent']=='news':
+        if any(x in domain for x in ('reuters.com','apnews.com','bbc.com','cnn.com')): score+=4
+    return score
+
+def verify_evidence(query,items):
+    """Return a reusable verification object for any prompt routed through WebReason."""
+    policy=analyze_prompt(query); accepted=[]; rejected=[]; domains=set()
+    for item in items or []:
+        score=source_quality(policy,item)
+        row=dict(item); row['_quality']=score
+        if score>0:
+            accepted.append(row)
+            d=urlparse(row.get('url','')).netloc.lower().removeprefix('www.')
+            if d: domains.add(d)
+        else: rejected.append(row)
+    accepted.sort(key=lambda x:x.get('_quality',0),reverse=True)
+    has_value=any(_MARKET_VALUE_RE.search((x.get('title','')+' '+x.get('body',''))) for x in accepted) if policy['requires_value'] else True
+    sufficient=bool(accepted) and has_value
+    confidence='LOW'
+    if sufficient and len(domains)>=max(3,policy['min_domains']): confidence='HIGH'
+    elif sufficient and len(domains)>=policy['min_domains']: confidence='MEDIUM'
+    return {'policy':policy,'accepted':accepted,'rejected':rejected,'domains':domains,'has_value':has_value,'sufficient':sufficient,'confidence':confidence}
+
+def grounded_synthesis_messages(query,verification,system_prompt='',history=None):
+    evidence='\n\n'.join(f"[{i}] {x['title']}\n{x.get('body','')}\nURL: {x.get('url','')}" for i,x in enumerate(verification['accepted'][:6],1))
+    locked=(
+      'VERIFIED-WEB MODE. Current/fresh claims may ONLY come from the supplied evidence. '
+      'Do not use model memory to supply a newer name, price, officeholder, date, score, weather value, or other current fact. '
+      'Do not claim Purple Falcon lacks web access. If evidence cannot verify the requested current fact, say exactly that the retrieved evidence is insufficient. '
+      'If model memory conflicts with fresher evidence, discard model memory. Cite supporting evidence as [1], [2]. '
+      f"Evidence confidence: {verification['confidence']}."
+    )
+    msgs=[{'role':'system','content':(system_prompt or '')+'\n'+locked}]
+    msgs+=(history or [])[-4:]
+    msgs.append({'role':'user','content':f'Question: {query}\n\nVerified current evidence:\n{evidence}'})
+    return msgs
+
 class ResearchAgent:
     def __init__(self,lang='tl'):
         self.lang=lang;self.plan={};self.sources=[];self.confirmed_facts=[];self.unverified=[];self.confidence_score=0.0
@@ -226,26 +290,31 @@ def detect_intent(message,reconstructed=None):
 
 def web_reply(message,call_ai=None,ai_failed_check=None,system_prompt=None,brain_down=False,history=None):
     if not ENABLED:return None
-    intent=detect_intent(message)
-    if not intent['search']:return None
-    query=intent['query'];agent=ResearchAgent('en');plan=agent.plan_search_strategy(query)
-    sources=search_sources([plan['primary_query']]+plan['cross_check_queries'])
-    if not sources:return None
-    for x in sources:agent.add_source(x)
-    agent.cross_check_facts()
-    if not agent.evidence_sufficient(query):
-        return "💜 I found live web results, but none of the retrieved evidence contains a reliable current market value for the requested quote. I won't substitute Wikipedia, unrelated Tesla pages, or remembered model knowledge for a live price."
-    # Preferred synthesis: use the main brain only if available. If absent, provide structured evidence, not failure.
+    policy=analyze_prompt(message)
+    # WebReason is a specialist. Ordinary static chat stays with the main/local brain.
+    if not policy['fresh'] and policy['intent']=='general': return None
+    query=policy['query']; queries=intent_queries(query)
+    raw_sources=search_sources(queries)
+    if not raw_sources:return None
+    verification=verify_evidence(query,raw_sources)
+    if not verification['sufficient']:
+        if policy['requires_value']:
+            return "💜 I searched the live web, but the retrieved evidence does not contain a reliable current value for this market query. I won't substitute Wikipedia, unrelated pages, or model memory for a live quote."
+        return "💜 I searched the live web, but the retrieved evidence is not strong enough to verify the requested current fact. I won't replace missing current evidence with model memory."
     if call_ai:
         try:
-            evidence='\n\n'.join(f"[{i}] {s['title']}\n{s['body']}\nURL: {s['url']}" for i,s in enumerate(agent.sources[:6],1))
-            msgs=[{'role':'system','content':(system_prompt or '')+'\nCURRENT-WEB GROUNDING RULES: Use ONLY the supplied current web evidence for current facts. Do not claim Purple Falcon lacks web access or live-feed capability. Describe limitations only in terms of the retrieved evidence. Fresh web evidence has already been supplied. Never replace missing current facts with remembered/model knowledge. If the evidence does not contain the requested current value, explicitly say the current value could not be verified from the retrieved evidence. Answer naturally and cite [1], [2] only where supported.'}]
-            msgs+=(history or [])[-4:];msgs.append({'role':'user','content':f'Question: {query}\n\nCurrent web evidence:\n{evidence}'})
-            ai=call_ai(msgs)
+            ai=call_ai(grounded_synthesis_messages(query,verification,system_prompt,history))
             failed=ai_failed_check(ai) if ai_failed_check else not bool(ai)
-            if isinstance(ai,str) and ai.strip() and not failed:return ai.strip()
-        except Exception as e:log.warning('Main-brain synthesis unavailable: %s',e)
-    return agent.evidence_answer(query)
+            if isinstance(ai,str) and ai.strip() and not failed and not reply_is_unsure(ai): return ai.strip()
+        except Exception as e: log.warning('Grounded synthesis unavailable: %s',e)
+    # No main brain: return only accepted current evidence, never a remembered fact.
+    lines=[f"💜 **Verified web evidence** — Confidence: **{verification['confidence']}**",'']
+    for i,x in enumerate(verification['accepted'][:5],1):
+        lines.append(f"**{i}. {x['title']}**")
+        if x.get('body'): lines.append(x['body'][:650])
+        if x.get('url'): lines.append(f"Source: {x['url']}")
+        lines.append('')
+    return '\n'.join(lines).strip()
 
 def self_test():
     class WR:
@@ -265,7 +334,13 @@ def self_test():
     a=ResearchAgent('en'); a.add_source(good); assert not a.evidence_sufficient('Tesla stock price now')
     priced={'title':'Tesla TSLA $450.25 stock quote','body':'TSLA quote $450.25 NASDAQ market','source':'finance.yahoo.com','url':'https://finance.yahoo.com/quote/TSLA'}
     a=ResearchAgent('en'); a.add_source(priced); assert a.evidence_sufficient('Tesla stock price now')
+    assert analyze_prompt('Who is the current Prime Minister of Japan?')['intent']=='officeholder'
+    assert analyze_prompt('explain recursion')['fresh'] is False
+    official={'title':'Prime Minister of Japan','body':'Prime Minister current official evidence','source':'kantei','url':'https://japan.kantei.go.jp/example'}
+    wiki={'title':'List of prime ministers','body':'older list','source':'wikipedia','url':'https://en.wikipedia.org/wiki/example'}
+    v=verify_evidence('Who is the current Prime Minister of Japan?',[wiki,official]); assert v['accepted'][0]['url'].startswith('https://japan.kantei.go.jp')
+    v2=verify_evidence('Tesla stock price now',[bad]); assert not v2['sufficient']
     return True
 
-__all__=['ENABLED','WEBSEARCH_AVAILABLE','SEARCH_AVAILABLE','web_reply','reply_is_unsure','search_sources','ResearchAgent','self_test','_extract_candidates','normalize_result','specialize_query','filter_relevant','evidence_relevance','classify_web_intent','intent_queries']
+__all__=['ENABLED','WEBSEARCH_AVAILABLE','SEARCH_AVAILABLE','web_reply','reply_is_unsure','search_sources','ResearchAgent','self_test','_extract_candidates','normalize_result','specialize_query','filter_relevant','evidence_relevance','classify_web_intent','intent_queries','analyze_prompt','verify_evidence','grounded_synthesis_messages']
 if __name__=='__main__':print('self_test:','PASS' if self_test() else 'FAIL')
