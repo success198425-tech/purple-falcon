@@ -4,7 +4,7 @@ import os, re, json, logging, tempfile
 from datetime import datetime
 from urllib.parse import urlparse
 
-APP_NAME='Purple Falcon PH'; VERSION='11.1.0'
+APP_NAME='Purple Falcon PH'; VERSION='11.2.0'
 ENABLED=os.getenv('PF_WEBREASON','1').strip().lower() not in ('0','false','no','off')
 MEMORY_FILE=os.getenv('PF_MEMORY_FILE','purple_falcon_memory.json')
 MAX_CONTEXT=8; MAX_RESULTS=8; MIN_SOURCES=2
@@ -85,6 +85,37 @@ def _extract_candidates(result):
     try:return list(result)
     except (TypeError,AttributeError):return []
 
+_MARKET_RE=re.compile(r"\b(?:stock|share|shares|price|quote|market|trading|ticker|nasdaq|nyse|after[- ]hours|pre[- ]market)\b",re.I)
+_TESLA_RE=re.compile(r"\b(?:tesla|tsla)\b",re.I)
+
+def specialize_query(query):
+    q=clean_query(query)
+    if _TESLA_RE.search(q) and _MARKET_RE.search(q):
+        return 'TSLA Tesla stock price today NASDAQ quote'
+    return q
+
+def evidence_relevance(query,item):
+    """Small deterministic relevance gate before evidence reaches synthesis."""
+    text=' '.join(str((item or {}).get(k) or '') for k in ('title','body','source','url')).lower()
+    q=(query or '').lower(); score=0
+    if _TESLA_RE.search(q) and _MARKET_RE.search(q):
+        if 'tsla' in text: score+=4
+        if 'tesla' in text: score+=2
+        if any(x in text for x in ('stock','share price','quote','nasdaq','market','trading')): score+=3
+        if any(x in text for x in ('autopilot','nikola tesla','biography','inventor')): score-=5
+        return score
+    # Generic lexical relevance: require at least one meaningful query token.
+    tokens={w for w in re.findall(r'\b[a-z0-9]{4,}\b',q) if w not in {'current','latest','today','official','what','who','when','where','this','that'}}
+    return sum(1 for w in tokens if w in text)
+
+def filter_relevant(query,items):
+    ranked=[]
+    for item in items or []:
+        score=evidence_relevance(query,item)
+        if score>0: ranked.append((score,item))
+    ranked.sort(key=lambda x:x[0],reverse=True)
+    return [x[1] for x in ranked]
+
 def search_via_websearch(query):
     if not WEBSEARCH_AVAILABLE or not websearch:return None
     try: raw=websearch.search(clean_query(query))
@@ -110,7 +141,9 @@ def search_web_fallback(query_list):
 def search_sources(query_list):
     out=[]; seen=set()
     for q in query_list:
-        batch=search_via_websearch(q) or search_web_fallback([q]) or []
+        effective=specialize_query(q)
+        batch=search_via_websearch(effective) or search_web_fallback([effective]) or []
+        batch=filter_relevant(effective,batch)
         for item in batch:
             key=item.get('url') or (item.get('title'),item.get('body','')[:100])
             if key in seen:continue
@@ -139,7 +172,7 @@ class ResearchAgent:
         else:self.confidence_score=CONFIDENCE_LOW
     def evidence_answer(self,question):
         label='HIGH' if self.confidence_score>=CONFIDENCE_HIGH else ('MEDIUM' if self.confidence_score>=CONFIDENCE_MEDIUM else 'LOW')
-        lines=[f'💜 **Web-verified research** — Confidence: **{label}**','']
+        lines=[f'💜 **Web research evidence** — Confidence: **{label}**','']
         for i,s in enumerate(self.sources[:5],1):
             body=(s['body'] or '').strip()
             lines.append(f"**{i}. {s['title']}**")
@@ -168,7 +201,7 @@ def web_reply(message,call_ai=None,ai_failed_check=None,system_prompt=None,brain
     if call_ai:
         try:
             evidence='\n\n'.join(f"[{i}] {s['title']}\n{s['body']}\nURL: {s['url']}" for i,s in enumerate(agent.sources[:6],1))
-            msgs=[{'role':'system','content':(system_prompt or '')+'\nUse ONLY the supplied current web evidence for current facts. Answer naturally, cite [1], [2]. If evidence is insufficient, say so.'}]
+            msgs=[{'role':'system','content':(system_prompt or '')+'\nCURRENT-WEB GROUNDING RULES: Use ONLY the supplied current web evidence for current facts. Do not claim you lack web/current-data access because fresh evidence has already been supplied. Never replace missing current facts with remembered/model knowledge. If the evidence does not contain the requested current value, explicitly say the current value could not be verified from the retrieved evidence. Answer naturally and cite [1], [2] only where supported.'}]
             msgs+=(history or [])[-4:];msgs.append({'role':'user','content':f'Question: {query}\n\nCurrent web evidence:\n{evidence}'})
             ai=call_ai(msgs)
             failed=ai_failed_check(ai) if ai_failed_check else not bool(ai)
@@ -183,7 +216,13 @@ def self_test():
             self.ok=True;self.provider='test';self.trace=[]
     assert len(_extract_candidates(WR()))==1
     n=normalize_result(_extract_candidates(WR())[0]);assert n['body']=='Current prime minister evidence'
+    assert specialize_query('What is Tesla stock price now?')=='TSLA Tesla stock price today NASDAQ quote'
+    good={'title':'Tesla (TSLA) Stock Quote','body':'TSLA stock market quote','source':'finance','url':'https://finance.example/tsla'}
+    bad={'title':'Tesla Autopilot','body':'driver assistance feature','source':'wiki','url':'https://example/autopilot'}
+    assert evidence_relevance('Tesla stock price now',good)>0
+    assert evidence_relevance('Tesla stock price now',bad)<=0
+    assert filter_relevant('Tesla stock price now',[bad,good])==[good]
     return True
 
-__all__=['ENABLED','WEBSEARCH_AVAILABLE','SEARCH_AVAILABLE','web_reply','reply_is_unsure','search_sources','ResearchAgent','self_test','_extract_candidates','normalize_result']
+__all__=['ENABLED','WEBSEARCH_AVAILABLE','SEARCH_AVAILABLE','web_reply','reply_is_unsure','search_sources','ResearchAgent','self_test','_extract_candidates','normalize_result','specialize_query','filter_relevant','evidence_relevance']
 if __name__=='__main__':print('self_test:','PASS' if self_test() else 'FAIL')
