@@ -1,11 +1,11 @@
 # Purple Falcon WebReason v14.0 - Verified Market Quote Mode
-import os, re, json, logging, tempfile, time, concurrent.futures as futures
+import os, re, json, logging, tempfile, time
 import requests
 from html import unescape
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 
-APP_NAME='Purple Falcon PH'; VERSION='16.8.0'
+APP_NAME='Purple Falcon PH'; VERSION='16.8.1'
 ENABLED=os.getenv('PF_WEBREASON','1').strip().lower() not in ('0','false','no','off')
 MEMORY_FILE=os.getenv('PF_MEMORY_FILE','purple_falcon_memory.json')
 MAX_RESULTS=10; MIN_SOURCES=2
@@ -154,7 +154,7 @@ _MARKET_TABLE_RE=re.compile(r'\b(?:table|tabulate|list|compare|comparison|watchl
 def _market_table_request(query):
     q=clean_query(query);low=q.lower()
     if not _MARKET_TABLE_RE.search(q):return None
-    region=_global_region_from_query(q) or _explicit_market_region(q) or (_DEFAULT_LOCAL_MARKET if re.search(r'\blocal\b',q,re.I) else None)
+    region=_explicit_market_region(q) or (_DEFAULT_LOCAL_MARKET if re.search(r'\blocal\b',q,re.I) else None)
     if re.search(r'\b(?:ph|philippines|philippine|pse)\b',q,re.I):region='PH'
     if re.search(r'\b(?:my|malaysia|malaysian|bursa|klse)\b',q,re.I):region='MY'
     return {'intent':'market_table','region':region or _DEFAULT_LOCAL_MARKET}
@@ -239,6 +239,76 @@ _PSE_SUFFIX='.PS'
 _PSE_DIRECTORY_URL='https://edge.pse.com.ph/companyDirectory/form.do'
 _PSE_CACHE_FILE=os.getenv('PF_PSE_CATALOG_FILE','purple_falcon_pse_catalog.json')
 _PSE_CACHE_SECONDS=int(os.getenv('PF_PSE_CATALOG_TTL','86400'))
+_PSE_ID_CACHE_FILE=os.getenv('PF_PSE_ID_CACHE_FILE','purple_falcon_pse_company_ids.json')
+_PSE_ID_CACHE_SECONDS=int(os.getenv('PF_PSE_ID_CACHE_TTL','604800'))
+_PSE_EDGE_SEARCH_URL='https://edge.pse.com.ph/companyDirectory/search.ax'
+
+def _load_pse_id_cache():
+    try:
+        if not os.path.exists(_PSE_ID_CACHE_FILE):return {}
+        with open(_PSE_ID_CACHE_FILE,encoding='utf-8') as f:data=json.load(f)
+        if not isinstance(data,dict):return {}
+        if time.time()-float(data.get('fetched_at',0))>_PSE_ID_CACHE_SECONDS:return {}
+        return data.get('ids') if isinstance(data.get('ids'),dict) else {}
+    except Exception:return {}
+
+def _save_pse_id_cache(ids):
+    try:
+        folder=os.path.dirname(os.path.abspath(_PSE_ID_CACHE_FILE)) or '.';os.makedirs(folder,exist_ok=True)
+        payload={'fetched_at':time.time(),'ids':ids}
+        with tempfile.NamedTemporaryFile('w',dir=folder,suffix='.tmp',delete=False,encoding='utf-8') as f:
+            json.dump(payload,f,ensure_ascii=False,indent=2);tmp=f.name
+        os.replace(tmp,_PSE_ID_CACHE_FILE)
+    except Exception as e:log.warning('PSE company-id cache save failed: %s',e)
+
+def _parse_pse_company_ids(html):
+    """Extract symbol -> cmpy_id from PSE EDGE company-directory/company links."""
+    out={}
+    rows=re.findall(r'(?is)<tr[^>]*>(.*?)</tr>',html or '')
+    for row in rows:
+        idm=re.search(r'(?:cmpy_id=|companyId[=:]["\']?)(\d+)',row,re.I)
+        if not idm:continue
+        text=re.sub(r'(?is)<[^>]+>',' ',row);text=re.sub(r'\s+',' ',unescape(text)).strip()
+        # Prefer a known PSE symbol present in the row.
+        tokens=re.findall(r'\b[A-Z][A-Z0-9]{0,9}\b',text.upper())
+        for tok in tokens:
+            if tok in _PSE_BUILTINS:
+                out[tok]=idm.group(1);break
+    return out
+
+def _refresh_pse_company_ids():
+    ids=_load_pse_id_cache()
+    if ids:return ids
+    # Seed known verified mapping and discover the rest from directory HTML.
+    ids={'BDO':'260'}
+    try:
+        r=requests.get(_PSE_DIRECTORY_URL,headers={'User-Agent':'Mozilla/5.0 PurpleFalcon/16.8.1'},timeout=10)
+        if r.status_code==200:ids.update(_parse_pse_company_ids(r.text))
+    except Exception as e:log.warning('PSE company-id discovery failed: %s',e)
+    _save_pse_id_cache(ids);return ids
+
+def _pse_company_id(symbol):
+    base=(symbol or '').upper().removesuffix('.PS')
+    return _refresh_pse_company_ids().get(base)
+
+def _pse_edge_quote(symbol):
+    base=(symbol or '').upper().removesuffix('.PS');cmpy_id=_pse_company_id(symbol)
+    if not base or not cmpy_id:return None
+    url=f'https://edge.pse.com.ph/companyPage/stockData.do?cmpy_id={cmpy_id}'
+    try:
+        r=requests.get(url,headers={'User-Agent':'Mozilla/5.0 PurpleFalcon/16.8.1'},timeout=9)
+        if r.status_code!=200:return None
+        text=unescape(re.sub(r'(?is)<[^>]+>',' ',r.text));text=re.sub(r'\s+',' ',text)
+        m=re.search(r'Last Traded Price\s*([0-9][0-9,]*(?:\.\d+)?)',text,re.I)
+        if not m:return None
+        price=float(m.group(1).replace(',',''))
+        pm=re.search(r'Previous Close(?: and Date)?\s*([0-9][0-9,]*(?:\.\d+)?)',text,re.I);prev=float(pm.group(1).replace(',','')) if pm else None
+        change=price-prev if prev is not None else None;pct=(change/prev*100) if change is not None and prev else None
+        dm=re.search(r'As of\s+([A-Z][a-z]{2}\s+\d{1,2},\s+20\d{2})(?:\s+([0-9:]+\s+[AP]M))?',text)
+        timestamp=' '.join(x for x in dm.groups() if x) if dm else None
+        return {'symbol':base+'.PS','price':price,'session':'PSE official / source-timed','timestamp_utc':timestamp,'currency':'PHP','exchange':'PSE','previous_close':prev,'change':change,'change_percent':pct,'source':'PSE EDGE','source_url':url,'observed_at':datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}
+    except Exception as e:log.warning('PSE EDGE quote failed for %s: %s',symbol,e);return None
+
 _PSE_BUILTINS={
  'BDO':'BDO Unibank, Inc.','BPI':'Bank of the Philippine Islands','AC':'Ayala Corporation','ALI':'Ayala Land, Inc.',
  'ACEN':'ACEN CORPORATION','AEV':'Aboitiz Equity Ventures, Inc.','AP':'Aboitiz Power Corporation','AREIT':'AREIT, Inc.',
@@ -332,51 +402,9 @@ def _exchange_from_query(query):
     if 'in-nse' in hits:return 'in-nse'
     return hits[0] if hits else None
 
-_GLOBAL_EXCHANGES={
- 'US':{'suffix':'','currency':'USD','aliases':('us','usa','united states','nasdaq','nyse','wall street'),'index':'^GSPC'},
- 'PH':{'suffix':'.PS','currency':'PHP','aliases':('ph','philippines','philippine','pse','manila'),'index':'PSEI.PS'},
- 'MY':{'suffix':'.KL','currency':'MYR','aliases':('my','malaysia','malaysian','bursa','klse','kuala lumpur'),'index':'^KLSE'},
- 'SG':{'suffix':'.SI','currency':'SGD','aliases':('sg','singapore','sgx'),'index':'^STI'},
- 'JP':{'suffix':'.T','currency':'JPY','aliases':('jp','japan','tokyo','tse','nikkei'),'index':'^N225'},
- 'HK':{'suffix':'.HK','currency':'HKD','aliases':('hk','hong kong','hkex','hang seng'),'index':'^HSI'},
- 'AU':{'suffix':'.AX','currency':'AUD','aliases':('au','australia','asx'),'index':'^AXJO'},
- 'CA':{'suffix':'.TO','currency':'CAD','aliases':('ca','canada','tsx','toronto'),'index':'^GSPTSE'},
- 'UK':{'suffix':'.L','currency':'GBP','aliases':('uk','united kingdom','britain','london','lse','ftse'),'index':'^FTSE'},
- 'DE':{'suffix':'.DE','currency':'EUR','aliases':('de','germany','german','xetra'),'index':'^GDAXI'},
- 'FR':{'suffix':'.PA','currency':'EUR','aliases':('fr','france','paris','euronext paris'),'index':'^FCHI'},
- 'NL':{'suffix':'.AS','currency':'EUR','aliases':('nl','netherlands','amsterdam','euronext amsterdam'),'index':'^AEX'},
- 'CH':{'suffix':'.SW','currency':'CHF','aliases':('ch','switzerland','swiss','six'),'index':'^SSMI'},
- 'IN':{'suffix':'.NS','currency':'INR','aliases':('in','india','nse','nifty'),'index':'^NSEI'},
- 'KR':{'suffix':'.KS','currency':'KRW','aliases':('kr','korea','south korea','krx','kospi'),'index':'^KS11'},
-}
-_GLOBAL_INDEX_SYMBOLS={m['index'] for m in _GLOBAL_EXCHANGES.values()}
-
-def _global_region_from_query(query):
-    low=clean_query(query).lower()
-    for code,meta in _GLOBAL_EXCHANGES.items():
-        if any(re.search(r'(?<![a-z0-9])'+re.escape(a)+r'(?![a-z0-9])',low) for a in meta['aliases']):return code
-    return None
-
-def _international_market_index(query):
-    region=_global_region_from_query(query)
-    return _GLOBAL_EXCHANGES.get(region,{}).get('index') if region else None
-
 _REGION_BASKETS={
  'PH':['BDO.PS','BPI.PS','JFC.PS','SM.PS','SMPH.PS','ALI.PS','TEL.PS','GLO.PS','MER.PS','ICT.PS','ACEN.PS','AP.PS'],
  'MY':['1155.KL','1295.KL','1023.KL','5347.KL','5225.KL','5183.KL','6012.KL','6033.KL','8869.KL','3816.KL'],
- 'US':['AAPL','MSFT','NVDA','AMZN','GOOGL','META','TSLA','AVGO','JPM','WMT'],
- 'SG':['D05.SI','O39.SI','U11.SI','Z74.SI','C6L.SI'],
- 'JP':['7203.T','6758.T','9984.T','8306.T','6861.T'],
- 'HK':['0700.HK','9988.HK','3690.HK','0005.HK','1299.HK'],
- 'AU':['BHP.AX','CBA.AX','CSL.AX','NAB.AX','WBC.AX'],
- 'CA':['RY.TO','TD.TO','SHOP.TO','ENB.TO','BNS.TO'],
- 'UK':['SHEL.L','HSBA.L','BP.L','AZN.L','ULVR.L'],
- 'DE':['SAP.DE','BMW.DE','MBG.DE','SIE.DE','ALV.DE'],
- 'FR':['MC.PA','OR.PA','AIR.PA','SAN.PA','SU.PA'],
- 'NL':['ASML.AS','SHELL.AS','INGA.AS','ADYEN.AS','PHIA.AS'],
- 'CH':['NESN.SW','NOVN.SW','ROG.SW','UBSG.SW','CFR.SW'],
- 'IN':['RELIANCE.NS','TCS.NS','INFY.NS','HDFCBANK.NS','ICICIBANK.NS'],
- 'KR':['005930.KS','000660.KS','005380.KS','035420.KS','051910.KS'],
 }
 
 def _market_table_symbols(query,limit=10):
@@ -384,320 +412,53 @@ def _market_table_symbols(query,limit=10):
     syms=list(_REGION_BASKETS.get(region,[]))
     return syms[:max(1,min(int(limit or 10),15))]
 
-def _quote_date(q):
-    ts=q.get('timestamp')
-    if isinstance(ts,(int,float)):return datetime.fromtimestamp(ts,timezone.utc).strftime('%Y-%m-%d')
-    ts_text=q.get('timestamp_utc') or ''
-    m=re.search(r'\b(20\d{2}-\d{2}-\d{2})\b',str(ts_text))
-    if m:return m.group(1)
-    m=re.search(r'\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2},\s+20\d{2}\b',str(ts_text),re.I)
-    return m.group(0) if m else 'Unknown'
-
-def _structured_quote_with_retry(symbol,retries=2,backoff=.35):
-    last=None
-    for attempt in range(max(1,retries+1)):
-        last=_direct_yahoo_quote(symbol)
-        if last:return last
-        if attempt<retries:time.sleep(backoff*(attempt+1))
-    return None
-
-QUOTE_CACHE_FILE=os.getenv('PF_QUOTE_CACHE_FILE','purple_falcon_verified_quotes.json')
-QUOTE_CACHE_MAX_AGE=int(os.getenv('PF_QUOTE_CACHE_MAX_AGE','86400'))
-QUOTE_CACHE_HARD_MAX_AGE=int(os.getenv('PF_QUOTE_CACHE_HARD_MAX_AGE','259200'))
-QUOTE_PRICE_TOLERANCE=float(os.getenv('PF_QUOTE_PRICE_TOLERANCE','0.03'))
-QUOTE_RECOVERY_LOG=os.getenv('PF_QUOTE_RECOVERY_LOG','1').strip().lower() not in ('0','false','no','off')
-_PSE_EDGE_COMPANY_IDS={'BDO':'260'}
-
-def _recovery_log(symbol,provider,status,detail=''):
-    if QUOTE_RECOVERY_LOG:log.info('QUOTE_RECOVERY symbol=%s provider=%s status=%s detail=%s',symbol,provider,status,str(detail)[:160])
-
-def _pse_edge_direct_quote(symbol):
-    base=_pse_base_symbol(symbol)
+def _pse_search_quote(symbol):
+    base=(symbol or '').upper().removesuffix('.PS')
     if not base:return None
-    cmpy_id=_PSE_EDGE_COMPANY_IDS.get(base)
-    if not cmpy_id:return None
-    url=f'https://edge.pse.com.ph/companyPage/stockData.do?cmpy_id={cmpy_id}'
-    try:
-        r=requests.get(url,headers={'User-Agent':'Mozilla/5.0 PurpleFalcon/16.8'},timeout=9)
-        if r.status_code!=200:_recovery_log(symbol,'PSE EDGE direct','fail',f'HTTP {r.status_code}');return None
-        text=unescape(re.sub(r'(?is)<[^>]+>',' ',r.text));text=re.sub(r'\s+',' ',text)
-        m=re.search(r'Last Traded Price\s*([0-9][0-9,]*(?:\.\d+)?)',text,re.I)
-        if not m:_recovery_log(symbol,'PSE EDGE direct','fail','price not parsed');return None
-        price=float(m.group(1).replace(',',''))
-        pm=re.search(r'Previous Close(?: and Date)?\s*([0-9][0-9,]*(?:\.\d+)?)',text,re.I);prev=float(pm.group(1).replace(',','')) if pm else None
-        cm=re.search(r'Change(?: \(% Change\))?[^0-9+\-]*([+\-]?[0-9]+(?:\.\d+)?)\s*\(([+\-]?[0-9]+(?:\.\d+)?)%\)',text,re.I)
-        change=float(cm.group(1)) if cm else ((price-prev) if prev is not None else None);pct=float(cm.group(2)) if cm else ((change/prev*100) if change is not None and prev else None)
-        dm=re.search(r'As of\s+([A-Z][a-z]{2}\s+\d{1,2},\s+20\d{2})(?:\s+([0-9:]+\s+[AP]M))?',text)
-        _recovery_log(symbol,'PSE EDGE direct','ok',price)
-        return {'symbol':symbol,'price':price,'previous_close':prev,'change':change,'change_percent':pct,'currency':'PHP','exchange':'PSE','session':'PSE official / source-timed','timestamp':None,'timestamp_utc':(' '.join(x for x in dm.groups() if x) if dm else None),'source':'PSE EDGE','source_url':url}
-    except Exception as e:_recovery_log(symbol,'PSE EDGE direct','error',e);return None
-
-
-def _load_quote_cache():
-    try:
-        if not os.path.exists(QUOTE_CACHE_FILE):return {}
-        with open(QUOTE_CACHE_FILE,encoding='utf-8') as f:data=json.load(f)
-        return data if isinstance(data,dict) else {}
-    except Exception as e:log.warning('Quote cache read failed: %s',e);return {}
-
-def _save_quote_cache(data):
-    try:
-        folder=os.path.dirname(os.path.abspath(QUOTE_CACHE_FILE)) or '.';os.makedirs(folder,exist_ok=True)
-        with tempfile.NamedTemporaryFile('w',dir=folder,suffix='.tmp',delete=False,encoding='utf-8') as f:
-            json.dump(data,f,ensure_ascii=False,indent=2);tmp=f.name
-        os.replace(tmp,QUOTE_CACHE_FILE)
-    except Exception as e:log.warning('Quote cache write failed: %s',e)
-
-def _normalize_quote(symbol,q,provider='unknown'):
-    if not isinstance(q,dict) or not isinstance(q.get('price'),(int,float)):return None
-    row=dict(q);row['symbol']=str(symbol or q.get('symbol') or '').upper();row['provider']=provider or row.get('source') or 'unknown'
-    row['verified_at_epoch']=int(time.time());row.setdefault('source',provider);row.setdefault('currency','');row.setdefault('exchange','Unavailable');row.setdefault('session','Unavailable')
-    return row
-
-def _cache_verified_quote(row):
-    if not row or not row.get('symbol') or not isinstance(row.get('price'),(int,float)):return
-    data=_load_quote_cache();item=dict(row);item['cached_at']=int(time.time());data[item['symbol']]=item;_save_quote_cache(data)
-
-def _cached_quote(symbol,hard=False):
-    item=_load_quote_cache().get(str(symbol or '').upper())
-    if not isinstance(item,dict) or not isinstance(item.get('price'),(int,float)):return None
-    age=int(time.time())-int(item.get('cached_at') or item.get('verified_at_epoch') or 0)
-    limit=QUOTE_CACHE_HARD_MAX_AGE if hard else QUOTE_CACHE_MAX_AGE
-    if age<0 or age>limit:return None
-    out=dict(item);out['cache_age_seconds']=age;out['session']='Cached verified';out['source']=f"{item.get('source') or item.get('provider') or 'verified source'} (cached)";out['route']='cache'
-    return out
-
-def _quote_consistent(a,b,tolerance=QUOTE_PRICE_TOLERANCE):
-    if not a or not b:return True
-    pa,pb=a.get('price'),b.get('price')
-    if not isinstance(pa,(int,float)) or not isinstance(pb,(int,float)):return True
-    return abs(pa-pb)/max(abs(pa),abs(pb),1e-9)<=max(0,float(tolerance))
-
-def _quote_freshness(q):
-    if not q:return 'unavailable'
-    if q.get('route')=='cache':return 'cached'
-    ts=q.get('timestamp');age=(time.time()-ts) if isinstance(ts,(int,float)) else None
-    if age is not None and age<=60:return 'live'
-    if age is not None and age<=900:return 'recent'
-    return 'delayed'
-
-class QuoteProvider:
-    name='provider';priority=100
-    def supports(self,symbol):return True
-    def quote(self,symbol):return None
-
-class PSEDirectProvider(QuoteProvider):
-    name='PSE-aware';priority=10
-    def supports(self,symbol):return bool(_pse_base_symbol(symbol))
-    def quote(self,symbol):
-        return _pse_edge_direct_quote(symbol) or _stockanalysis_pse_quote(symbol) or _pse_quote_from_websearch(symbol)
-
-class YahooChartProvider(QuoteProvider):
-    name='Yahoo chart';priority=30
-    def quote(self,symbol):return _structured_quote_with_retry(symbol,1,.25)
-
-class WebEvidenceProvider(QuoteProvider):
-    name='Web evidence';priority=50
-    def quote(self,symbol):return _fallback_quote_from_search(symbol)
-
-def _quote_providers(symbol):
-    providers=[PSEDirectProvider(),YahooChartProvider(),WebEvidenceProvider()]
-    return sorted([p for p in providers if p.supports(symbol)],key=lambda p:p.priority)
-
-def resolve_verified_quote(symbol):
-    """Authoritative provider-recovery engine shared by individual requests and market tables."""
-    observations=[]
-    for provider in _quote_providers(symbol):
-        try:
-            q=_normalize_quote(symbol,provider.quote(symbol),provider.name)
-            _recovery_log(symbol,provider.name,'ok' if q else 'miss',q.get('price') if q else '')
-        except Exception as e:
-            _recovery_log(symbol,provider.name,'error',e);q=None
-        if not q:continue
-        observations.append(q)
-        if len(observations)>=2 and _quote_consistent(observations[0],observations[1]):break
-    if observations:
-        observations.sort(key=lambda q:int(q.get('timestamp') or 0),reverse=True)
-        chosen=observations[0]
-        if len(observations)>1 and not _quote_consistent(observations[0],observations[1]):
-            chosen=dict(chosen);chosen['source']=f"{chosen.get('source')} · cross-source discrepancy"
-        chosen['freshness']=_quote_freshness(chosen);chosen['route']='verified';_cache_verified_quote(chosen);return chosen
-    cached=_cached_quote(symbol,hard=False)
-    if cached:_recovery_log(symbol,'verified cache','ok',cached.get('cache_age_seconds'));return cached
-    stale=_cached_quote(symbol,hard=True)
-    if stale:
-        stale=dict(stale);stale['session']='Cached verified / stale';stale['freshness']='stale-cache';stale['source']=f"{stale.get('source','verified source')} · stale cache";_recovery_log(symbol,'hard cache','ok',stale.get('cache_age_seconds'));return stale
-    _recovery_log(symbol,'all providers','fail','no quote/cache')
+    qs=[f'PSE {base} stock price today',f'{base} PSE Last Traded Price',f'site:stockanalysis.com/quote/pse/{base} {base}']
+    for q in qs:
+        for item in (search_via_websearch(q) or search_fallback(q)):
+            text=' '.join(str(item.get(k) or '') for k in ('title','body'))
+            if not re.search(rf'\b{re.escape(base)}\b',text,re.I):continue
+            m=re.search(r'Last Traded Price\s*([0-9][0-9,]*(?:\.\d+)?)',text,re.I)
+            if m:
+                price=float(m.group(1).replace(',',''));pm=re.search(r'Previous Close(?: and Date)?\s*([0-9][0-9,]*(?:\.\d+)?)',text,re.I);prev=float(pm.group(1).replace(',','')) if pm else None
+                return {'symbol':base+'.PS','price':price,'currency':'PHP','exchange':'PSE','previous_close':prev,'change':price-prev if prev is not None else None,'change_percent':((price-prev)/prev*100) if prev else None,'session':'PSE source-timed','timestamp_utc':None,'source':item.get('source') or urlparse(item.get('url','')).netloc,'source_url':item.get('url','')}
+            m=re.search(r'\b([0-9]{1,5}(?:\.\d{1,4})?)\s+([+\-]?[0-9]{1,5}(?:\.\d{1,4})?)\s*\(([+\-]?[0-9]+(?:\.\d+)?)%\)',text)
+            if m:
+                price=float(m.group(1));chg=float(m.group(2));pct=float(m.group(3))
+                return {'symbol':base+'.PS','price':price,'currency':'PHP','exchange':'PSE','previous_close':price-chg,'change':chg,'change_percent':pct,'session':'Delayed/Last close','timestamp_utc':None,'source':item.get('source') or urlparse(item.get('url','')).netloc,'source_url':item.get('url','')}
     return None
 
-
-
-def quote_provider_diagnostics(symbol):
-    symbol=(symbol or '').upper().strip();result={'symbol':symbol,'providers':[],'cache':None}
-    for provider in _quote_providers(symbol):
-        try:q=_normalize_quote(symbol,provider.quote(symbol),provider.name);result['providers'].append({'provider':provider.name,'ok':bool(q),'price':q.get('price') if q else None,'source':q.get('source') if q else None})
-        except Exception as e:result['providers'].append({'provider':provider.name,'ok':False,'error':e.__class__.__name__})
-    c=_cached_quote(symbol,hard=True)
-    if c:result['cache']={'age_seconds':c.get('cache_age_seconds'),'price':c.get('price'),'source':c.get('source')}
-    return result
-
-def _pse_base_symbol(symbol):
-    sym=(symbol or '').upper().strip()
-    return sym[:-3] if sym.endswith('.PS') else None
-
-def _stockanalysis_pse_quote(symbol):
-    """PSE-specific provider. Yahoo currently misclassifies some .PS symbols, so query StockAnalysis's PSE namespace."""
-    base=_pse_base_symbol(symbol)
-    if not base:return None
-    url=f'https://stockanalysis.com/quote/pse/{base}/'
-    try:
-        r=requests.get(url,headers={'User-Agent':'Mozilla/5.0 PurpleFalcon/16.4','Accept':'text/html,application/xhtml+xml'},timeout=9)
-        if r.status_code!=200:
-            log.warning('StockAnalysis PSE HTTP %s for %s',r.status_code,symbol);return None
-        text=unescape(re.sub(r'(?is)<[^>]+>',' ',r.text));text=re.sub(r'\s+',' ',text).strip()
-        # Typical page text begins with company/ticker followed by price and signed change.
-        patterns=[
-          rf'\b{re.escape(base)}\b[^0-9]{{0,120}}([0-9]{{1,5}}(?:\.[0-9]{{1,4}})?)\s+([+-][0-9]{{1,5}}(?:\.[0-9]{{1,4}})?)\s*\(([+-]?[0-9]+(?:\.[0-9]+)?)%\)',
-          r'At close:\s*[^0-9]{0,40}([0-9]{1,5}(?:\.[0-9]{1,4})?)\s+([+-][0-9]{1,5}(?:\.[0-9]{1,4})?)\s*\(([+-]?[0-9]+(?:\.[0-9]+)?)%\)',
-        ]
-        m=next((x for pat in patterns if (x:=re.search(pat,text,re.I))),None)
-        if not m:return None
-        price=float(m.group(1));change=float(m.group(2));pct=float(m.group(3));prev=price-change
-        dm=re.search(r'At close:\s*([A-Z][a-z]{2}\s+\d{1,2},\s+20\d{2})',text)
-        date_text=dm.group(1) if dm else None
-        return {'symbol':symbol,'price':price,'previous_close':prev,'change':change,'change_percent':pct,'currency':'PHP','exchange':'PSE','session':'Delayed/Last close','timestamp':None,'timestamp_utc':date_text,'source':'StockAnalysis PSE quote','source_url':url}
-    except Exception as e:
-        log.warning('StockAnalysis PSE failed for %s: %s',symbol,e);return None
-
-def _pse_quote_from_websearch(symbol):
-    """PSE-specific current quote fallback using official/PSE-aware search evidence."""
-    base=_pse_base_symbol(symbol)
-    if not base:return None
-    queries=[
-      f'PSE {base} stock data last traded price today',
-      f'site:edge.pse.com.ph {base} Last Traded Price',
-      f'site:stockanalysis.com/quote/pse/{base} {base} stock price',
-    ]
-    items=[]
-    for q in queries:
-        batch=search_via_websearch(q) or search_web_fallback([q]) or []
-        for x in batch:
-            if x not in items:items.append(x)
-    ranked=[]
-    for item in items:
-        text=' '.join(str(item.get(k) or '') for k in ('title','body','source','url'))
-        low=text.lower();url=item.get('url') or '';domain=urlparse(url).netloc.lower().removeprefix('www.')
-        if not re.search(rf'(?<![a-z0-9]){re.escape(base.lower())}(?![a-z0-9])',low):continue
-        score=0
-        if 'edge.pse.com.ph' in domain:score+=12
-        if 'stockanalysis.com' in domain:score+=9
-        if 'investing.com' in domain:score+=7
-        if any(k in low for k in ('last traded price','at close','stock price','previous close')):score+=5
-        ranked.append((score,item,text,domain))
-    ranked.sort(key=lambda x:x[0],reverse=True)
-    for score,item,text,domain in ranked:
-        # Official PSE EDGE: "Last Traded Price 110.50 ... Previous Close ... 110.50 ... Change ... (0.00%)"
-        m=re.search(r'Last Traded Price\s*([0-9][0-9,]*(?:\.\d+)?)',text,re.I)
-        if m:
-            price=float(m.group(1).replace(',',''))
-            pm=re.search(r'Previous Close(?: and Date)?\s*([0-9][0-9,]*(?:\.\d+)?)',text,re.I)
-            prev=float(pm.group(1).replace(',','')) if pm else None
-            cm=re.search(r'Change(?: \(% Change\))?[^0-9+\-]*([+\-]?[0-9]+(?:\.\d+)?)\s*\(([+\-]?[0-9]+(?:\.\d+)?)%\)',text,re.I)
-            change=float(cm.group(1)) if cm else ((price-prev) if prev is not None else None)
-            pct=float(cm.group(2)) if cm else ((change/prev*100) if change is not None and prev else None)
-            dm=re.search(r'As of\s+([A-Z][a-z]{2}\s+\d{1,2},\s+20\d{2})',text)
-            return {'symbol':symbol,'price':price,'previous_close':prev,'change':change,'change_percent':pct,'currency':'PHP','exchange':'PSE','session':'PSE official / source-timed','timestamp':None,'timestamp_utc':dm.group(1) if dm else None,'source':'PSE EDGE','source_url':item.get('url') or ''}
-        # StockAnalysis / Investing style: 110.50 0.00 (0.00%) or 110.60 +0.30 (0.27%)
-        m=re.search(r'\b([0-9]{1,5}(?:\.\d{1,4})?)\s+([+\-]?[0-9]{1,5}(?:\.\d{1,4})?)\s*\(([+\-]?[0-9]+(?:\.\d+)?)%\)',text)
-        if m:
-            price=float(m.group(1));change=float(m.group(2));pct=float(m.group(3));prev=price-change
-            dm=re.search(r'(?:At close:\s*)?([A-Z][a-z]{2}\s+\d{1,2},\s+20\d{2})',text)
-            return {'symbol':symbol,'price':price,'previous_close':prev,'change':change,'change_percent':pct,'currency':'PHP','exchange':'PSE','session':'Delayed/Last close','timestamp':None,'timestamp_utc':dm.group(1) if dm else None,'source':domain or 'PSE web evidence','source_url':item.get('url') or ''}
-    return None
-
-
-def _fallback_quote_from_search(symbol):
-    # Per-symbol evidence fallback. Only extract a quote when the evidence explicitly contains symbol + numeric price.
-    queries=[f'{symbol} stock quote today',f'{symbol} price today official']
-    items=search_sources(queries) or []
-    for item in items:
-        text=' '.join(str(item.get(k) or '') for k in ('title','body','source','url'))
-        if symbol.split('.')[0].lower() not in text.lower():continue
-        m=re.search(r'(?:PHP|₱|MYR|RM|USD|\$)\s*([0-9][0-9,]*(?:\.\d+)?)|([0-9][0-9,]*(?:\.\d+)?)\s*(?:PHP|MYR|USD)',text,re.I)
-        if not m:continue
-        val=float((m.group(1) or m.group(2)).replace(',',''))
-        currency='PHP' if re.search(r'PHP|₱',text,re.I) else 'MYR' if re.search(r'MYR|RM',text,re.I) else 'USD'
-        url=item.get('url') or ''
-        source=item.get('source') or (urlparse(url).netloc.removeprefix('www.') if url else 'Web evidence')
-        date_match=re.search(r'\b(20\d{2}-\d{1,2}-\d{1,2})\b',text)
-        return {'symbol':symbol,'price':val,'previous_close':None,'currency':currency,'exchange':'Unavailable','session':'Source-timed','timestamp':None,'timestamp_utc':date_match.group(1) if date_match else None,'source':source,'source_url':url}
-    return None
+def _resolve_pse_quote(symbol):
+    return _pse_edge_quote(symbol) or _pse_search_quote(symbol) or _direct_yahoo_quote(symbol)
 
 def _compact_quote_row(symbol):
-    q=resolve_verified_quote(symbol)
-    if not q:return {'symbol':symbol,'available':False,'price':None,'change':None,'pct':None,'currency':'','exchange':'Unavailable','session':'Unavailable','timestamp':None,'date':'Unknown','source':'Unavailable','route':'unavailable','freshness':'unavailable'}
-    price=q.get('price');prev=q.get('previous_close');change=q.get('change');pct=q.get('change_percent')
-    if not isinstance(change,(int,float)) and isinstance(price,(int,float)) and isinstance(prev,(int,float)):change=price-prev
-    if not isinstance(pct,(int,float)) and isinstance(change,(int,float)) and isinstance(prev,(int,float)) and prev:pct=change/prev*100
-    return {'symbol':symbol,'available':isinstance(price,(int,float)),'price':price,'change':change,'pct':pct,'currency':q.get('currency') or '','exchange':q.get('exchange') or 'Unavailable','session':q.get('session') or 'Unavailable','timestamp':q.get('timestamp'),'date':_quote_date(q),'source':q.get('source') or 'Unavailable','route':q.get('route') or 'verified','freshness':q.get('freshness') or _quote_freshness(q)}
-
-
-def _batch_quote_rows(symbols,max_workers=4):
-    symbols=list(dict.fromkeys(str(x).upper().strip() for x in (symbols or []) if x))
-    if not symbols:return []
-    results={};workers=max(1,min(max_workers,len(symbols)))
-    with futures.ThreadPoolExecutor(max_workers=workers) as ex:
-        jobs={ex.submit(_compact_quote_row,s):s for s in symbols}
-        for fut,sym in jobs.items():
-            try:results[sym]=fut.result()
-            except Exception as e:log.warning('Unified quote engine failed for %s: %s',sym,e);results[sym]={'symbol':sym,'available':False,'price':None,'change':None,'pct':None,'currency':'','exchange':'Unavailable','session':'Unavailable','timestamp':None,'date':'Unknown','source':'Unavailable','route':'error','freshness':'unavailable'}
-    return [results[s] for s in symbols]
-
-
-def _html_escape(value):
-    import html
-    return html.escape(str(value if value is not None else ''))
-
-def _change_html(row):
-    a=row.get('change');p=row.get('pct')
-    if not isinstance(a,(int,float)) or not isinstance(p,(int,float)):return '<span class="pf-market-change pf-neutral">Unavailable</span>'
-    cls,arrow=('pf-up','▲') if a>0 else (('pf-down','▼') if a<0 else ('pf-neutral','•'))
-    return f'<span class="pf-market-change {cls}">{arrow} {a:+.2f} ({p:+.2f}%)</span>'
-
-def _session_html(session):
-    text=str(session or 'Unavailable');low=text.lower()
-    cls='pf-live' if any(x in low for x in ('regular','open','live')) else ('pf-delayed' if any(x in low for x in ('delay','recent','pre','after','overnight','source-timed')) else 'pf-closed')
-    return f'<span class="pf-market-pill {cls}">{_html_escape(text)}</span>'
-
-def _market_table_html(title,rows):
-    body=[]
-    for r in rows:
-        price=f"{r['price']:.2f} {r['currency']}" if isinstance(r.get('price'),(int,float)) else 'Unavailable'
-        body.append('<tr>'+f'<td class="pf-symbol">{_html_escape(r.get("symbol"))}</td>'+f'<td class="pf-num">{_html_escape(price)}</td>'+f'<td class="pf-num">{_change_html(r)}</td>'+f'<td>{_session_html(r.get("session"))}</td>'+f'<td>{_html_escape(r.get("date","Unknown"))}</td>'+f'<td class="pf-source">{_html_escape(r.get("source","Unavailable"))}</td>'+'</tr>')
-    return ('<div class="pf-market-table-card">'+f'<div class="pf-market-table-title">💜 {_html_escape(title)}</div>'+'<div class="pf-market-table-scroll"><table class="pf-market-table">'+'<thead><tr><th>Symbol</th><th>Price</th><th>Change</th><th>Session</th><th>Date</th><th>Source</th></tr></thead>'+'<tbody>'+''.join(body)+'</tbody></table></div></div>')
-
-MARKET_TABLE_CSS="""<style>
-.pf-market-table-card{border:1px solid rgba(127,127,127,.22);border-radius:14px;overflow:hidden;background:var(--pf-panel,#fff);margin:.55rem 0 1rem;box-shadow:0 1px 3px rgba(0,0,0,.04)}
-.pf-market-table-title{font-weight:700;padding:12px 16px;border-bottom:1px solid rgba(127,127,127,.18)}
-.pf-market-table-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}.pf-market-table{width:100%;border-collapse:separate;border-spacing:0;min-width:760px;font-size:.94rem}
-.pf-market-table th{padding:12px 16px;text-align:left;background:rgba(120,120,120,.07);font-weight:700;white-space:nowrap}.pf-market-table td{padding:12px 16px;border-top:1px solid rgba(127,127,127,.16);vertical-align:middle;white-space:nowrap}.pf-market-table th+th,.pf-market-table td+td{border-left:1px solid rgba(127,127,127,.12)}
-.pf-symbol{font-weight:700}.pf-num{font-variant-numeric:tabular-nums}.pf-source{max-width:220px;overflow:hidden;text-overflow:ellipsis}.pf-up{color:#16803c;font-weight:700}.pf-down{color:#c43131;font-weight:700}.pf-neutral{color:#6b7280}
-.pf-market-pill{display:inline-flex;padding:3px 8px;border-radius:999px;font-size:.78rem;font-weight:700}.pf-live{background:#dcfce7;color:#166534}.pf-delayed{background:#fef3c7;color:#92400e}.pf-closed{background:#eef2f7;color:#475569}.pf-market-table-note{font-size:.78rem;opacity:.72;margin:.25rem .15rem .5rem}
-@media(max-width:640px){.pf-market-table-card{border-radius:12px}.pf-market-table{font-size:.88rem}.pf-market-table th,.pf-market-table td{padding:10px 12px}}
-</style>"""
+    q=_resolve_pse_quote(symbol) if str(symbol).upper().endswith('.PS') else _direct_yahoo_quote(symbol)
+    if not q:return None
+    price=q.get('price');prev=q.get('previous_close');currency=q.get('currency') or ''
+    change=(price-prev) if isinstance(price,(int,float)) and isinstance(prev,(int,float)) else None
+    pct=(change/prev*100) if isinstance(change,(int,float)) and isinstance(prev,(int,float)) and prev else None
+    return {'symbol':symbol,'price':price,'change':change,'pct':pct,'currency':currency,'exchange':q.get('exchange') or 'Unavailable','session':q.get('session') or 'Unavailable','timestamp':q.get('timestamp')}
 
 def _format_market_table(query):
     req=_market_table_request(query) or {};region=req.get('region') or _DEFAULT_LOCAL_MARKET
-    symbols=_market_table_symbols(query,10);rows=_batch_quote_rows(symbols)
-    labels={'PH':'Philippine','MY':'Malaysia','US':'US','SG':'Singapore','JP':'Japan','HK':'Hong Kong','AU':'Australia','CA':'Canada','UK':'UK','DE':'Germany','FR':'France','NL':'Netherlands','CH':'Switzerland','IN':'India','KR':'South Korea'}
-    title=f"{labels.get(region,region)} stocks"
-    verified=sum(1 for r in rows if r.get('available'));unavailable=len(rows)-verified
-    if not rows:return f"💜 **{title}**\n\nNo symbols were available for this market table."
-    result=MARKET_TABLE_CSS+_market_table_html(f'{title} — current market quotes',rows)
-    result+=f"<div class='pf-market-table-note'>Requested: {len(rows)} · Verified: {verified} · Unavailable: {unavailable}. Failed symbols do not cancel the table.</div>"
-    result+="<div class='pf-market-table-note'>Unified provider adapters select the best available market source, cross-check when possible, and fall back to a recent verified cache. Values are never guessed.</div>"
-    return '<!--PF_MARKET_TABLE-->'+result
-
+    rows=[]
+    for sym in _market_table_symbols(query,10):
+        row=_compact_quote_row(sym)
+        if row:rows.append(row)
+    title='Philippine local stocks' if region=='PH' else ('Malaysia local stocks' if region=='MY' else f'{region} local stocks')
+    if not rows:return f"💜 **{title}**\n\nI couldn't verify enough structured quotes to build the requested local-stock table right now."
+    out=[f"💜 **{title} — current structured quotes**",'', '| Symbol | Price | Change | Session |','|---|---:|---:|---|']
+    for r in rows:
+        price=f"{r['price']:.2f} {r['currency']}" if isinstance(r['price'],(int,float)) else 'Unavailable'
+        change=f"{r['change']:+.2f} ({r['pct']:+.2f}%)" if isinstance(r['change'],(int,float)) and isinstance(r['pct'],(int,float)) else 'Unavailable'
+        out.append(f"| {r['symbol']} | {price} | {change} | {r['session']} |")
+    times=[r.get('timestamp') for r in rows if isinstance(r.get('timestamp'),(int,float))]
+    if times:
+        out += ['',f"Latest quote timestamp in table: {datetime.fromtimestamp(max(times)).isoformat(sep=' ',timespec='seconds')}"]
+    out += ['', 'Values come from structured market quotes. Missing counters are skipped rather than guessed.']
+    return '\n'.join(out)
 
 def _normalize_symbol(symbol):
     value=(symbol or '').strip().upper().replace(' ', '')
@@ -722,13 +483,13 @@ def _symbol_from_query(query):
     if pse:return pse
     intl=_resolve_international_alias(q)
     if intl:return intl
-    # Explicit Yahoo/exchange-qualified symbols outrank a regional index mention from suffix/country context.
+    index_symbol=_market_index_from_query(q)
+    if index_symbol:return index_symbol
+    # Explicit Yahoo/exchange-qualified symbol such as 7203.T / 0700.HK / 1155.KL / ASML.AS.
     m=re.search(r'(?<![A-Za-z0-9])([A-Za-z0-9]{1,12}(?:\.[A-Za-z]{1,4}|-[A-Za-z]))\b',q)
     if m:
         sym=_normalize_symbol(m.group(1))
         if any(sym.endswith(suf) for suf in _KNOWN_SUFFIXES) or '-' in sym:return sym
-    index_symbol=_market_index_from_query(q) or _international_market_index(q)
-    if index_symbol:return index_symbol
     for alias,symbol in sorted(_STOCK_ALIASES.items(),key=lambda kv:len(kv[0]),reverse=True):
         if re.search(r'(?<![a-z0-9])'+re.escape(alias)+r'(?![a-z0-9])',low): return symbol
     m=re.search(r'\$(?P<t>[A-Za-z][A-Za-z0-9.\-]{0,12})\b',q)
@@ -864,8 +625,6 @@ def _format_direct_quote(q):
         rows.append(('Trailing dividend yield',_percent_value(q.get('dividend_yield')) if q.get('dividend_yield') is not None else 'Unavailable'))
     rows.append(('Exchange',q.get('exchange') or 'Unavailable'))
     rows.append(('Currency',currency))
-    if q.get('route')=='cache': rows.append(('Cache age',f"{int(q.get('cache_age_seconds',0)//60)} min"))
-    if q.get('freshness'): rows.append(('Freshness',str(q.get('freshness')).upper()))
     lines=[f"💜 **{_md_cell(q.get('symbol') or 'Market')} market update**",'', '| Item | Value |','|---|---|']
     lines.extend(f"| {_md_cell(k)} | {_md_cell(v)} |" for k,v in rows)
     lines += ['',f"**Source:** {_md_cell(q.get('source') or 'Unavailable')}",q.get('source_url') or '',f"**Retrieved:** {_md_cell(q.get('observed_at') or 'Unavailable')}",'Market data can change quickly and may be delayed depending on exchange/source coverage. Use the session and quote timestamp above.']
@@ -911,7 +670,7 @@ def web_reply(message,call_ai=None,ai_failed_check=None,system_prompt=None,brain
         private_reply=_private_market_reply(query)
         if private_reply:return private_reply
         symbol=_symbol_from_query(query)
-        direct=resolve_verified_quote(symbol) if symbol else None
+        direct=(_resolve_pse_quote(symbol) if symbol and str(symbol).upper().endswith('.PS') else _direct_yahoo_quote(symbol)) if symbol else None
         if direct:return _format_direct_quote(direct)
         sources=search_sources(intent_queries(query))
         if not sources:return "💜 I couldn't retrieve a current structured market quote or trustworthy market evidence right now. I won't guess a price."
@@ -955,16 +714,13 @@ def self_test():
     assert _symbol_from_query('0700.HK price now')=='0700.HK'
     assert _symbol_from_query('1155.KL stock')=='1155.KL'
     assert _symbol_from_query('BDO stock Philippines')=='BDO.PS'
-    assert _quote_consistent({'price':100},{'price':101})
-    assert not _quote_consistent({'price':100},{'price':120})
-    assert isinstance(_quote_providers('BDO.PS')[0],PSEDirectProvider)
-    assert _PSE_EDGE_COMPANY_IDS.get('BDO')=='260'
-    assert callable(quote_provider_diagnostics)
     assert _symbol_from_query('BPI PSE price')=='BPI.PS'
     assert _symbol_from_query('Jollibee stock Philippines')=='JFC.PS'
     assert _symbol_from_query('Maynilad PSE stock')=='MYNLD.PS'
     assert _symbol_from_query('ACEN PSE price now')=='ACEN.PS'
     assert _symbol_from_query('BDO.PS price')=='BDO.PS'
+    assert _pse_company_id('BDO.PS')=='260'
+    assert callable(_resolve_pse_quote)
     # Dynamic local-market tests. Default local market is controlled by PF_LOCAL_MARKET.
     expected_local=_MARKET_CONTEXTS.get(_DEFAULT_LOCAL_MARKET,_MARKET_CONTEXTS['MY'])['index']
     assert _symbol_from_query('local stock update today?')==expected_local
@@ -976,14 +732,6 @@ def self_test():
     assert _dynamic_market_intent('can you tabulate result for other local stocks at PH?')['intent']=='market_table'
     assert _market_table_symbols('tabulate local stocks PH',3)==['BDO.PS','BPI.PS','JFC.PS']
     assert _market_table_symbols('compare local stocks Malaysia',2)==['1155.KL','1295.KL']
-    assert _market_table_symbols('tabulate Japan stocks',2)==['7203.T','6758.T']
-    assert _market_table_symbols('compare US stocks',2)==['AAPL','MSFT']
-    assert _market_table_symbols('list Singapore stocks',2)==['D05.SI','O39.SI']
-    assert _global_region_from_query('Hong Kong stocks')=='HK'
-    assert _global_region_from_query('Germany stocks')=='DE'
-    assert _pse_base_symbol('BDO.PS')=='BDO' and _pse_base_symbol('1155.KL') is None
-    assert _symbol_from_query('BDO stock Philippines')=='BDO.PS'
-    assert all(k in _compact_quote_row.__code__.co_names or k in globals() for k in ('_direct_yahoo_quote',))
     assert _symbol_from_query('Malaysia stock update today')=='^KLSE'
     assert _symbol_from_query('Philippines stock update')=='PSEI.PS'
     assert _symbol_from_query('Singapore stock market today')=='^STI'
@@ -1002,5 +750,5 @@ def self_test():
     dividend_text=_format_direct_quote(dividend_mock);assert '| Market cap | 15.00B USD |' in dividend_text and '| Trailing annual dividend | 2.5 USD / share |' in dividend_text and '| Trailing dividend yield | 3.50% |' in dividend_text
     return True
 
-__all__=['ENABLED','WEBSEARCH_AVAILABLE','SEARCH_AVAILABLE','web_reply','reply_is_unsure','search_sources','self_test','_extract_candidates','normalize_result','classify_web_intent','analyze_prompt','verify_evidence','grounded_synthesis_messages','_extract_market_quote','_direct_yahoo_quote','_format_direct_quote','_fetch_pse_catalog','_pse_symbol_from_query','_parse_pse_directory_html','_human_money','_percent_value','_dynamic_market_intent','_market_index_from_query','_local_market_region','_private_market_entity','_market_table_request','_market_table_symbols','_format_market_table','_global_region_from_query','_international_market_index','_GLOBAL_EXCHANGES','resolve_verified_quote','_quote_consistent','_cached_quote','QuoteProvider','quote_provider_diagnostics']
+__all__=['ENABLED','WEBSEARCH_AVAILABLE','SEARCH_AVAILABLE','web_reply','reply_is_unsure','search_sources','self_test','_extract_candidates','normalize_result','classify_web_intent','analyze_prompt','verify_evidence','grounded_synthesis_messages','_extract_market_quote','_direct_yahoo_quote','_format_direct_quote','_fetch_pse_catalog','_pse_symbol_from_query','_parse_pse_directory_html','_human_money','_percent_value','_dynamic_market_intent','_market_index_from_query','_local_market_region','_private_market_entity','_market_table_request','_market_table_symbols','_format_market_table','_pse_company_id','_resolve_pse_quote','_refresh_pse_company_ids']
 if __name__=='__main__':print('self_test:','PASS' if self_test() else 'FAIL')
