@@ -1,11 +1,11 @@
 # Purple Falcon WebReason v14.0 - Verified Market Quote Mode
-import os, re, json, logging, tempfile, time, csv, io
+import os, re, json, logging, tempfile, time
 import requests
 from html import unescape
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 
-APP_NAME='Purple Falcon PH'; VERSION='15.4.0'
+APP_NAME='Purple Falcon PH'; VERSION='15.5.0'
 ENABLED=os.getenv('PF_WEBREASON','1').strip().lower() not in ('0','false','no','off')
 MEMORY_FILE=os.getenv('PF_MEMORY_FILE','purple_falcon_memory.json')
 MAX_RESULTS=10; MIN_SOURCES=2
@@ -65,7 +65,7 @@ def search_fallback(q):
     except Exception as e:log.warning('DDGS failed: %s',e);return []
     return [n for n in (normalize_result(x) for x in rows) if n]
 
-_MARKET_RE=re.compile(r'\b(?:stock|share|shares|price|quote|market|trading|ticker|nasdaq|nyse|after[- ]hours|pre[- ]market|overnight)\b',re.I)
+_MARKET_RE=re.compile(r'\b(?:stock|stocks|share|shares|price|quote|market|trading|ticker|index|indices|nasdaq|nyse|pse|psei|after[- ]hours|pre[- ]market|overnight)\b',re.I)
 _FRESH_RE=re.compile(r'\b(?:current|latest|today|now|ngayon|recent|updated?|as of)\b',re.I)
 _WEATHER_RE=re.compile(r'\b(?:weather|forecast|temperature|rain|storm|typhoon)\b',re.I)
 _NEWS_RE=re.compile(r'\b(?:news|balita|headline|breaking)\b',re.I)
@@ -109,7 +109,31 @@ _DATE_RE=re.compile(r'\b(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|
 _TIME_RE=re.compile(r'\b\d{1,2}:\d{2}(?::\d{2})?\s*(?:AM|PM)?\s*(?:EDT|EST|ET|UTC|GMT)?\b',re.I)
 _FINANCE_DOMAINS=('finance.yahoo.com','nasdaq.com','reuters.com','bloomberg.com','marketwatch.com','cnbc.com','investing.com','google.com')
 
+_LOCAL_MARKET_RE=re.compile(r'\b(?:local|domestic|home)\b.*\b(?:stock|stocks|market|shares?|index|update)\b|\b(?:stock|stocks|market|shares?|index)\b.*\b(?:local|domestic|home)\b',re.I)
+_PH_CONTEXT_RE=re.compile(r'\b(?:philippines|philippine|ph|pse|psei|manila|local)\b',re.I)
+_PH_MARKET_OVERVIEW_RE=re.compile(r'\b(?:local|philippines?|philippine|ph|pse|psei)\b.*\b(?:stock|stocks|market|shares?|index|update|today|now)\b|\b(?:stock|stocks|market|shares?|index)\b.*\b(?:philippines?|philippine|ph|pse|psei|local)\b',re.I)
+_INDEX_SYMBOLS={'PSEI.PS'}
+
+def _market_index_from_query(query):
+    q=clean_query(query);low=q.lower()
+    # Explicit PSEi always wins. Generic local-market overview must not steal a named/bare PSE security.
+    if re.search(r'\bpsei\b',q,re.I):return 'PSEI.PS'
+    company_hints=('bdo','bpi','jollibee','ayala','acen','aboitiz','pldt','globe','meralco','ictsi','san miguel','puregold','metrobank','unionbank','maynilad')
+    if any(re.search(r'(?<![a-z0-9])'+re.escape(x)+r'(?![a-z0-9])',low) for x in company_hints):return None
+    if re.search(r'\b[A-Z][A-Z0-9]{1,9}\.PS\b',q):return None
+    if _PH_MARKET_OVERVIEW_RE.search(q):return 'PSEI.PS'
+    return None
+
+def _is_market_index(symbol):return (symbol or '').upper() in _INDEX_SYMBOLS
+
+def _dynamic_market_intent(query):
+    q=clean_query(query)
+    if _market_index_from_query(q):return {'intent':'market','symbol':'PSEI.PS','kind':'index','region':'PH'}
+    if _MARKET_RE.search(q):return {'intent':'market','symbol':None,'kind':'security','region':'PH' if _PH_CONTEXT_RE.search(q) else None}
+    return None
+
 def classify_web_intent(q):
+    if _dynamic_market_intent(q):return 'market'
     if _MARKET_RE.search(q or ''):return 'market'
     if _WEATHER_RE.search(q or ''):return 'weather'
     if _NEWS_RE.search(q or ''):return 'news'
@@ -266,29 +290,10 @@ def _resolve_international_alias(query):
         return None
     return None
 
-_MARKET_INDEX_ALIASES={
-    'PSEI.PS':(
-      r'\bpsei\b', r'\bphilippine stock market\b', r'\bphilippines stock market\b',
-      r'\bphilippine stocks? (?:update|today|now|market)\b',
-      r'\bphilippines stocks? (?:update|today|now|market)\b',
-      r'\bph stocks? (?:update|today|now|market)\b',
-      r'\bpse market (?:update|today|now)\b',
-    )
-}
-_INDEX_SYMBOLS={'PSEI.PS'}
-
-def _market_index_from_query(query):
-    q=query or ''
-    for symbol,patterns in _MARKET_INDEX_ALIASES.items():
-        if any(re.search(p,q,re.I) for p in patterns):return symbol
-    return None
-
-def _is_market_index(symbol):return (symbol or '').upper() in _INDEX_SYMBOLS
-
 def _symbol_from_query(query):
     q=(query or '').strip(); low=q.lower()
-    market_index=_market_index_from_query(q)
-    if market_index:return market_index
+    index_symbol=_market_index_from_query(q)
+    if index_symbol:return index_symbol
     pse=_pse_symbol_from_query(q)
     if pse:return pse
     intl=_resolve_international_alias(q)
@@ -412,260 +417,49 @@ def _percent_value(value):
     if abs(v)<=1:v*=100
     return f"{v:.2f}%"
 
-def _history_yahoo(symbol,range_='1y',interval='1d'):
-    """Fetch observed daily OHLCV history used only for deterministic indicators."""
-    symbol=(symbol or '').upper().strip()
-    if not re.fullmatch(r'[A-Z0-9.\-]{1,16}',symbol):return None
-    try:
-        r=requests.get(f'https://query1.finance.yahoo.com/v8/finance/chart/{symbol}',params={'interval':interval,'range':range_,'includePrePost':'false'},headers={'User-Agent':'Mozilla/5.0 PurpleFalcon/14.9'},timeout=8)
-        if r.status_code!=200:return None
-        result=((r.json().get('chart') or {}).get('result') or [None])[0]
-        if not isinstance(result,dict):return None
-        ts=result.get('timestamp') or [];quote=(((result.get('indicators') or {}).get('quote') or [{}])[0]);closes=((((result.get('indicators') or {}).get('adjclose') or [{}])[0]).get('adjclose') or quote.get('close') or [])
-        volumes=quote.get('volume') or []
-        rows=[]
-        for i,t in enumerate(ts):
-            c=closes[i] if i<len(closes) else None;v=volumes[i] if i<len(volumes) else None
-            if isinstance(c,(int,float)):rows.append({'timestamp':int(t),'close':float(c),'volume':float(v) if isinstance(v,(int,float)) else None})
-        return rows or None
-    except Exception as e:log.warning('Yahoo history failed: %s',e);return None
-
-def _sma(values,n):
-    return sum(values[-n:])/n if len(values)>=n else None
-
-def _ema_series(values,n):
-    if len(values)<n:return []
-    k=2/(n+1);out=[];ema=sum(values[:n])/n
-    for i,x in enumerate(values):
-        if i<n-1:out.append(None)
-        elif i==n-1:out.append(ema)
-        else:ema=x*k+ema*(1-k);out.append(ema)
-    return out
-
-def _rsi14(values):
-    if len(values)<15:return None
-    changes=[values[i]-values[i-1] for i in range(1,len(values))][-14:];gain=sum(max(x,0) for x in changes)/14;loss=sum(max(-x,0) for x in changes)/14
-    if loss==0:return 100.0
-    rs=gain/loss;return 100-(100/(1+rs))
-
-def _macd(values):
-    e12=_ema_series(values,12);e26=_ema_series(values,26)
-    pairs=[(a-b) for a,b in zip(e12,e26) if a is not None and b is not None]
-    if len(pairs)<9:return (None,None,None)
-    signal=_ema_series(pairs,9)[-1];macd=pairs[-1]
-    return (macd,signal,macd-signal if signal is not None else None)
-
-def _scenario_levels_from_closes(closes):
-    if not closes or len(closes)<20:return None
-    recent=[float(x) for x in closes[-20:]];price=recent[-1];support=min(recent);resistance=max(recent);range20=resistance-support
-    sma20=sum(recent)/20;buffer=(range20*0.02) if range20>0 else price*0.005
-    return {'Pullback reference':sma20 if sma20>support else support,'Breakout confirmation':resistance+buffer,'Invalidation / risk reference':support-buffer,'Upside reference 1':resistance+range20*0.5,'Upside reference 2':resistance+range20}
-
-def _market_signal(symbol):
-    rows=_history_yahoo(symbol)
-    if not rows or len(rows)<50:return {'signal':'⚪ INSUFFICIENT DATA','risk':'Unknown','reason':'At least 50 daily closes are required','indicators':{}}
-    closes=[r['close'] for r in rows];vols=[r['volume'] for r in rows if r['volume'] is not None];price=closes[-1]
-    sma20=_sma(closes,20);sma50=_sma(closes,50);sma200=_sma(closes,200);rsi=_rsi14(closes);macd,macd_sig,hist=_macd(closes);v20=_sma(vols,20) if vols else None;vol=rows[-1]['volume'];support=min(closes[-20:]);resistance=max(closes[-20:])
-    score=0;reasons=[]
-    if sma20 is not None:score += 1 if price>sma20 else -1;reasons.append('price above SMA20' if price>sma20 else 'price below SMA20')
-    if sma50 is not None:score += 1 if sma20 and sma20>sma50 else -1;reasons.append('SMA20 above SMA50' if sma20 and sma20>sma50 else 'SMA20 not above SMA50')
-    if rsi is not None:
-        if 50<=rsi<=70:score+=1;reasons.append('RSI supports positive momentum')
-        elif rsi<40:score-=1;reasons.append('RSI shows weak momentum')
-        elif rsi>75:reasons.append('RSI is elevated/overbought')
-    if hist is not None:score += 1 if hist>0 else -1;reasons.append('MACD histogram positive' if hist>0 else 'MACD histogram negative')
-    if vol is not None and v20 is not None and vol>v20*1.2:reasons.append('volume above 20-day average')
-    signal='🟢 BULLISH' if score>=2 else '🔴 BEARISH' if score<=-2 else '🟡 NEUTRAL'
-    risk='High' if (rsi is not None and (rsi>75 or rsi<30)) else 'Medium'
-    # Technical scenario levels, not personalized buy/sell instructions.
-    recent=closes[-20:]
-    range20=max(recent)-min(recent) if recent else None
-    buffer=(range20*0.02) if range20 and range20>0 else (price*0.005)
-    breakout_entry=(resistance+buffer) if resistance is not None else None
-    pullback_entry=(sma20 if sma20 is not None and sma20>support else support)
-    invalidation=(support-buffer) if support is not None else None
-    target1=(resistance + range20*0.5) if resistance is not None and range20 else None
-    target2=(resistance + range20) if resistance is not None and range20 else None
-    return {'signal':signal,'risk':risk,'reason':'; '.join(reasons[:4]),'indicators':{'SMA20':sma20,'SMA50':sma50,'SMA200':sma200,'RSI14':rsi,'MACD':macd,'MACD_signal':macd_sig,'MACD_hist':hist,'Volume':vol,'Volume20':v20,'Support20':support,'Resistance20':resistance},'scenario_levels':{'Pullback reference':pullback_entry,'Breakout confirmation':breakout_entry,'Invalidation / risk reference':invalidation,'Upside reference 1':target1,'Upside reference 2':target2}}
-
-def _position_size_scenarios(sig,portfolio_values=(25000,50000,100000,250000,500000),risk_budgets=(0.25,0.50,1.00)):
-    """Deterministic educational scenario matrix. Values are illustrative, not personalized sizing advice."""
-    levels=(sig or {}).get('scenario_levels') or {}
-    entry=levels.get('Pullback reference'); invalid=levels.get('Invalidation / risk reference')
-    if not isinstance(entry,(int,float)) or not isinstance(invalid,(int,float)) or entry<=invalid:return None
-    risk_per_unit=entry-invalid; rows=[]
-    for portfolio in portfolio_values:
-        row={'portfolio':float(portfolio),'units':{}}
-        for pct in risk_budgets:
-            risk_capital=float(portfolio)*(float(pct)/100.0)
-            row['units'][float(pct)]=risk_capital/risk_per_unit
-        rows.append(row)
-    return {'entry':entry,'invalidation':invalid,'risk_per_unit':risk_per_unit,'portfolio_values':list(portfolio_values),'risk_budgets':list(risk_budgets),'rows':rows}
-
-def _spark_bar(value,max_value,width=18):
-    if not isinstance(value,(int,float)) or max_value<=0:return '—'
-    n=max(1,min(width,int(round(value/max_value*width))))
-    return '█'*n + '░'*(width-n)
-
-def _position_size_csv(sig,symbol='MARKET'):
-    """CSV export text for the same deterministic position-size scenarios shown in chat."""
-    sc=_position_size_scenarios(sig)
-    if not sc:return None
-    buf=io.StringIO();w=csv.writer(buf,lineterminator='\n')
-    w.writerow(['symbol','portfolio_value','risk_budget_percent','reference_entry','invalidation_reference','risk_per_unit','illustrative_units'])
-    for row in sc['rows']:
-        for pct in sc['risk_budgets']:
-            w.writerow([symbol,f"{row['portfolio']:.2f}",f"{pct:.2f}",f"{sc['entry']:.4f}",f"{sc['invalidation']:.4f}",f"{sc['risk_per_unit']:.4f}",f"{row['units'][pct]:.4f}"])
-    levels=(sig or {}).get('scenario_levels') or {}
-    w.writerow([]);w.writerow(['technical_level','value'])
-    for name in ('Pullback reference','Breakout confirmation','Invalidation / risk reference','Upside reference 1','Upside reference 2'):
-        v=levels.get(name);w.writerow([name,'' if v is None else f'{v:.4f}'])
-    return buf.getvalue()
-
-def export_position_size_csv(sig,symbol='MARKET',directory=None):
-    """Write a safe CSV artifact. Host/UI may expose the returned path as a download."""
-    data=_position_size_csv(sig,symbol)
-    if not data:return None
-    directory=directory or os.getenv('PF_EXPORT_DIR','.')
-    os.makedirs(directory,exist_ok=True)
-    safe=re.sub(r'[^A-Z0-9._-]+','_',str(symbol or 'MARKET').upper())
-    stamp=datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
-    path=os.path.join(directory,f'purple_falcon_{safe}_position_scenarios_{stamp}.csv')
-    with open(path,'w',encoding='utf-8',newline='') as f:f.write(data)
-    return path
-
-def _csv_export_preview(sig,symbol='MARKET'):
-    data=_position_size_csv(sig,symbol)
-    if not data:return ''
-    return '\n'.join(['','**CSV export available:** position-size scenarios and technical levels are export-ready.','Use `export_position_size_csv(...)` from the host integration to create the downloadable `.csv` file.'])
-
-def _position_size_plot(sig):
-    """Portable Markdown/text plots render directly in chat without image-file plumbing."""
-    sc=_position_size_scenarios(sig)
-    if not sc:return '\n\n**Position-size scenarios:** Unavailable until valid entry/invalidation references exist.'
-    all_units=[u for r in sc['rows'] for u in r['units'].values()]; mx=max(all_units) if all_units else 1
-    lines=['','**Position-size scenarios (illustrative units)**','', '```text']
-    for pct in sc['risk_budgets']:
-        lines.append(f'Risk budget {pct:.2f}%')
-        for row in sc['rows']:
-            units=row['units'][pct]
-            lines.append(f"{row['portfolio']:>9,.0f} | {_spark_bar(units,mx)} {units:,.2f} units")
-        lines.append('')
-    lines.append('```')
-    levels=(sig or {}).get('scenario_levels') or {}
-    plotted=[('Invalidation',levels.get('Invalidation / risk reference')),('Pullback',levels.get('Pullback reference')),('Breakout',levels.get('Breakout confirmation')),('Upside 1',levels.get('Upside reference 1')),('Upside 2',levels.get('Upside reference 2'))]
-    vals=[v for _,v in plotted if isinstance(v,(int,float))]
-    if vals:
-        lo,hi=min(vals),max(vals);span=max(hi-lo,1e-9);width=36
-        lines += ['','**Technical level map**','', '```text']
-        for name,val in plotted:
-            if not isinstance(val,(int,float)):continue
-            pos=max(0,min(width,int(round((val-lo)/span*width))))
-            lines.append(f"{name:<12} |"+' '*pos+'● '+f'{val:.2f}')
-        lines.append('```')
-    lines.append('Plots are educational scenario visualizations. They do not account for personal portfolio constraints or recommend a trade size.')
-    return '\n'.join(lines)
-
-def _position_sizing_guidance(sig):
-    """Educational risk-budget examples only. Does not know the user's portfolio or recommend a trade size."""
-    levels=(sig or {}).get('scenario_levels') or {}
-    entry=levels.get('Pullback reference')
-    invalid=levels.get('Invalidation / risk reference')
-    if not isinstance(entry,(int,float)) or not isinstance(invalid,(int,float)) or entry<=invalid:
-        return '\n'.join(['','| Position Sizing Guide | Value |','|---|---:|','| Risk per unit | Unavailable |','| Example risk budgets | 0.25% / 0.50% / 1.00% |','','Position sizing is unavailable until a valid technical reference and invalidation level exist.'])
-    risk_per_unit=entry-invalid
-    risk_pct=(risk_per_unit/entry*100) if entry else None
-    lines=['','| Position Sizing Guide | Value |','|---|---:|',f'| Reference entry | {entry:.2f} |',f'| Invalidation reference | {invalid:.2f} |',f'| Risk per unit | {risk_per_unit:.2f} |',f'| Price risk | {risk_pct:.2f}% |' if risk_pct is not None else '| Price risk | Unavailable |','', '| Example Portfolio Risk Budget | Position Formula |','|---:|---|']
-    for pct in (0.25,0.50,1.00):
-        lines.append(f'| {pct:.2f}% | Units = (Portfolio Value × {pct/100:.4f}) ÷ {risk_per_unit:.2f} |')
-    lines += ['', '**Worked example (illustrative only):** For a 100,000 portfolio and 0.50% risk budget, risk capital = 500.00; illustrative units = '+f'{500/risk_per_unit:.2f}'+'.', 'This is educational risk-budget math, not a personalized recommendation. Actual sizing must account for fees, slippage, lot sizes, currency conversion, liquidity, taxes, leverage, and the possibility of gaps beyond the invalidation level.']
-    return '\n'.join(lines)
-
-def _index_signal_table(symbol):
-    sig=_market_signal(symbol);i=sig.get('indicators') or {}
-    fmt=lambda x:f'{x:.2f}' if isinstance(x,(int,float)) else 'Unavailable'
-    if sig.get('signal')=='⚪ INSUFFICIENT DATA':
-        return '\n'.join(['','| Index Signal | Risk | Reason |','|---|---|---|',f"| {sig.get('signal')} | {sig.get('risk')} | {_md_cell(sig.get('reason'))} |"])
-    return '\n'.join(['','| Index Signal | Trend | Momentum |','|---|---|---|',f"| {sig.get('signal')} | {'Up' if (i.get('SMA20') and i.get('SMA50') and i['SMA20']>i['SMA50']) else 'Down / Mixed'} | RSI {fmt(i.get('RSI14'))}, MACD hist {fmt(i.get('MACD_hist'))} |",'', '| PSEi Technical Reference | Value |','|---|---:|',f"| SMA20 | {fmt(i.get('SMA20'))} |",f"| SMA50 | {fmt(i.get('SMA50'))} |",f"| SMA200 | {fmt(i.get('SMA200'))} |",f"| 20-day support | {fmt(i.get('Support20'))} |",f"| 20-day resistance | {fmt(i.get('Resistance20'))} |",'', '**Note:** PSEi is a benchmark index. Position-size and trade-entry calculations are suppressed for the index itself; ask for a specific PSE stock for those scenarios.'])
-
-def _signal_table(symbol):
-    sig=_market_signal(symbol);i=sig.get('indicators') or {}
-    fmt=lambda x: f'{x:.2f}' if isinstance(x,(int,float)) else 'Unavailable'
-    if sig['signal']=='⚪ INSUFFICIENT DATA':return '\n'.join(['','| Market Signal | Risk | Reason |','|---|---|---|',f"| {sig['signal']} | {sig['risk']} | {_md_cell(sig['reason'])} |"])
-    levels=sig.get('scenario_levels') or {}
-    technical='\n'.join(['','| Market Signal | Trend | Momentum | Risk |','|---|---|---|---|',f"| {sig['signal']} | {'Up' if (i.get('SMA20') and i.get('SMA50') and i['SMA20']>i['SMA50']) else 'Down / Mixed'} | RSI {fmt(i.get('RSI14'))}, MACD hist {fmt(i.get('MACD_hist'))} | {sig['risk']} |",'', '| Technical Reference | Value |','|---|---:|',f"| SMA20 | {fmt(i.get('SMA20'))} |",f"| SMA50 | {fmt(i.get('SMA50'))} |",f"| SMA200 | {fmt(i.get('SMA200'))} |",f"| 20-day support | {fmt(i.get('Support20'))} |",f"| 20-day resistance | {fmt(i.get('Resistance20'))} |",'', '| Technical Scenario Level | Value |','|---|---:|',f"| Pullback reference | {fmt(levels.get('Pullback reference'))} |",f"| Breakout confirmation | {fmt(levels.get('Breakout confirmation'))} |",f"| Invalidation / risk reference | {fmt(levels.get('Invalidation / risk reference'))} |",f"| Upside reference 1 | {fmt(levels.get('Upside reference 1'))} |",f"| Upside reference 2 | {fmt(levels.get('Upside reference 2'))} |",'',f"**Signal rationale:** {_md_cell(sig['reason'])}",'**Interpretation:** These are technical scenario references derived from observed price history, not personalized instructions to buy, sell, enter, exit, or set a stop.'])
-    return technical + _position_sizing_guidance(sig) + _position_size_plot(sig) + _csv_export_preview(sig,symbol)
-
-def _parse_utc_timestamp(value):
-    if not value:return None
-    try:return datetime.strptime(value,'%Y-%m-%d %H:%M:%S UTC').replace(tzinfo=timezone.utc)
-    except Exception:return None
-
-def _quote_freshness(q,now=None):
-    """Classify quote freshness from the market quote timestamp, never HTTP retrieval time."""
-    now=now or datetime.now(timezone.utc)
-    ts=_parse_utc_timestamp((q or {}).get('timestamp_utc'))
-    if not ts:return {'label':'⚠️ UNKNOWN','age_seconds':None,'age_text':'timestamp unknown'}
-    age=max(0,(now-ts).total_seconds())
-    session=((q or {}).get('session') or '').lower()
-    if age<=60: label='🟢 LIVE'
-    elif age<=15*60: label='🟡 RECENT'
-    elif age<=24*3600: label='🟠 DELAYED'
-    else: label='⚪ LAST CLOSE' if ('close' in session or 'regular' in session) else '🟠 STALE'
-    if age<60: text=f'{int(age)} sec ago'
-    elif age<3600: text=f'{int(age//60)} min ago'
-    elif age<86400: text=f'{age/3600:.1f} hr ago'
-    else:text=f'{age/86400:.1f} d ago'
-    return {'label':label,'age_seconds':age,'age_text':text}
-
 def _md_cell(value):
     return str(value if value is not None else 'Unavailable').replace('|','\\|').replace('\n',' ')
 
 def _format_direct_quote(q):
-    """Compact market card: headline metrics first, supporting metadata second."""
     if not q:return None
     currency=q.get('currency') or 'USD'
-    price=f"{q['price']:.2f} {currency}" if q.get('price') is not None else 'Unavailable'
-    change=(f"{q['change']:+.2f} ({q['change_percent']:+.2f}%)" if q.get('change') is not None and q.get('change_percent') is not None else 'Unavailable')
-    market_cap=_human_money(q.get('market_cap'),currency) if q.get('market_cap') is not None else 'Unavailable'
-    dividend=(f"{q['dividend_rate']:.4g} {currency}" if q.get('dividend_rate') is not None else 'Unavailable')
-    div_yield=_percent_value(q.get('dividend_yield')) if q.get('dividend_yield') is not None else 'Unavailable'
-    previous=f"{q['previous_close']:.2f} {currency}" if q.get('previous_close') is not None else 'Unavailable'
-    freshness=_quote_freshness(q)
-    lines=[
-      f"💜 **{_md_cell(q.get('symbol') or 'Market')} market update**",'',
-      '| Price | Change | Market Cap | Dividend | Yield |',
-      '|---:|---:|---:|---:|---:|',
-      f"| {_md_cell(price)} | {_md_cell(change)} | {_md_cell(market_cap)} | {_md_cell(dividend)} | {_md_cell(div_yield)} |",'',
-      '| Status | Session | Previous Close | Exchange | Currency |',
-      '|---|---|---:|---|---|',
-      f"| {_md_cell(freshness['label'])} | {_md_cell((q.get('session') or 'Unavailable').title())} | {_md_cell(previous)} | {_md_cell(q.get('exchange') or 'Unavailable')} | {_md_cell(currency)} |",'',
-      f"**Quote time:** {_md_cell(q.get('timestamp_utc') or 'Unavailable')}",
-      f"**Updated:** {_md_cell(freshness['age_text'])}",
-      f"**Source:** {_md_cell(q.get('source') or 'Unavailable')}",
-      q.get('source_url') or '',
-      f"**Retrieved:** {_md_cell(q.get('observed_at') or 'Unavailable')}",
-      'Market data may be delayed. Use the session and quote timestamp above.'
-    ]
-    base='\n'.join(x for x in lines if x!='')
-    symbol=q.get('symbol')
-    if _is_market_index(symbol):
-        return base + _index_signal_table(symbol)
-    return base + _signal_table(symbol)
+    rows=[]
+    rows.append(('Symbol',q.get('symbol') or 'Unavailable'))
+    rows.append(('Price',f"{q['price']:.2f} {currency}" if q.get('price') is not None else 'Unavailable'))
+    rows.append(('Session',(q.get('session') or 'Unavailable').title()))
+    rows.append(('Quote timestamp',q.get('timestamp_utc') or 'Unavailable'))
+    if q.get('change') is not None and q.get('change_percent') is not None:
+        rows.append(('Change vs previous close',f"{q['change']:+.2f} {currency} ({q['change_percent']:+.2f}%)"))
+    else: rows.append(('Change vs previous close','Unavailable'))
+    rows.append(('Previous close',f"{q['previous_close']:.2f} {currency}" if q.get('previous_close') is not None else 'Unavailable'))
+    if not _is_market_index(q.get('symbol')):
+        rows.append(('Market cap',_human_money(q.get('market_cap'),currency) if q.get('market_cap') is not None else 'Unavailable'))
+        rows.append(('Trailing annual dividend',f"{q['dividend_rate']:.4g} {currency} / share" if q.get('dividend_rate') is not None else 'Unavailable'))
+        rows.append(('Trailing dividend yield',_percent_value(q.get('dividend_yield')) if q.get('dividend_yield') is not None else 'Unavailable'))
+    rows.append(('Exchange',q.get('exchange') or 'Unavailable'))
+    rows.append(('Currency',currency))
+    lines=[f"💜 **{_md_cell(q.get('symbol') or 'Market')} market update**",'', '| Item | Value |','|---|---|']
+    lines.extend(f"| {_md_cell(k)} | {_md_cell(v)} |" for k,v in rows)
+    lines += ['',f"**Source:** {_md_cell(q.get('source') or 'Unavailable')}",q.get('source_url') or '',f"**Retrieved:** {_md_cell(q.get('observed_at') or 'Unavailable')}",'Market data can change quickly and may be delayed depending on exchange/source coverage. Use the session and quote timestamp above.']
+    return '\n'.join(lines)
 
 def _market_quote_answer(query,items):
     q=_extract_market_quote(query,items)
     if q['price'] is None:
         return "💜 I searched current market sources, but I couldn't extract a reliable current quote from the retrieved evidence. I won't guess a price."
-    price=f"{q['price']:.2f} USD"
-    session=(q.get('session') or 'latest observed quote').title()
-    lines=[f"💜 **{_md_cell(q.get('symbol') or 'Market')} market update**",'',
-           '| Price | Change | Volume | Status | Session |','|---:|---:|---:|---|---|',
-           f"| {_md_cell(price)} | {_md_cell(q.get('change_percent') or 'Unavailable')} | {_md_cell(q.get('volume') or 'Unavailable')} | ⚠️ SOURCE-TIMED | {_md_cell(session)} |",'',
-           f"**Quote date/time:** {_md_cell(' '.join(x for x in (q.get('as_of_date'),q.get('as_of_time')) if x) or 'Unavailable')}",
-           f"**Source:** {_md_cell(q.get('source') or 'Unavailable')}",q.get('source_url') or '',
-           'Market data may be delayed. Use the quote date/time above.']
-    return '\n'.join(x for x in lines if x!='')
+    rows=[
+      ('Symbol',q.get('symbol') or 'Unavailable'),
+      ('Price',f"{q['price']:.2f} USD"),
+      ('Session',(q.get('session') or 'latest observed quote').title()),
+      ('Quote date',q.get('as_of_date') or 'Unavailable'),
+      ('Quote time',q.get('as_of_time') or 'Unavailable'),
+      ('Change',q.get('change_percent') or 'Unavailable'),
+      ('Volume',q.get('volume') or 'Unavailable'),
+    ]
+    lines=[f"💜 **{_md_cell(q.get('symbol') or 'Market')} market update**",'', '| Item | Value |','|---|---|']
+    lines.extend(f"| {_md_cell(k)} | {_md_cell(v)} |" for k,v in rows)
+    lines += ['',f"**Source:** {_md_cell(q.get('source') or 'Unavailable')}",q.get('source_url') or '','Market data can change quickly; the session/date/time above describes the retrieved quote.']
+    return '\n'.join(lines)
 
 def grounded_synthesis_messages(query,verification,system_prompt='',history=None):
     evidence='\n\n'.join(f"[{i}] {x['title']}\n{x['body']}\nURL: {x['url']}" for i,x in enumerate(verification['accepted'][:6],1))
@@ -708,7 +502,7 @@ def self_test():
     # Regression: never reproduce an invented $185.12 when evidence says $378.73.
     y={'title':'Tesla, Inc. (TSLA) Historical Prices','body':'At close: October 5 at 4:00:01 PM EDT. Oct 5, 2026 close $378.73, volume 42,112,900.','source':'finance.yahoo.com','url':'https://finance.yahoo.com/quote/TSLA/history/'}
     q=_extract_market_quote('Tesla stock price now',[y]);assert q['price']==378.73 and q['session']=='regular close'
-    ans=_market_quote_answer('Tesla stock price now',[y]);assert '378.73 USD' in ans and '$185.12' not in ans and '| Price | Change | Volume | Status | Session |' in ans
+    ans=_market_quote_answer('Tesla stock price now',[y]);assert '| Price | 378.73 USD |' in ans and '$185.12' not in ans and '| Item | Value |' in ans
     bad={'title':'Tesla Autopilot','body':'Tesla vehicle feature $185.12 unrelated number','source':'wikipedia','url':'https://en.wikipedia.org/wiki/Tesla_Autopilot'}
     assert _extract_market_quote('Tesla stock price now',[bad])['price'] is None
     assert classify_web_intent('Tesla stock price now')=='market'
@@ -735,31 +529,19 @@ def self_test():
     assert _symbol_from_query('Maynilad PSE stock')=='MYNLD.PS'
     assert _symbol_from_query('ACEN PSE price now')=='ACEN.PS'
     assert _symbol_from_query('BDO.PS price')=='BDO.PS'
-    assert _symbol_from_query('Philippines stock update')=='PSEI.PS'
+    assert _symbol_from_query('local stock update today?')=='PSEI.PS'
     assert _symbol_from_query('what I mean Philippines stock update')=='PSEI.PS'
+    assert _symbol_from_query('how is the local market now')=='PSEI.PS'
     assert _symbol_from_query('PSEi today')=='PSEI.PS'
-    assert _symbol_from_query('Philippine stock market now')=='PSEI.PS'
-    assert _is_market_index('PSEI.PS')
+    assert _dynamic_market_intent('local stocks today')['kind']=='index'
     fixture='<table><tr><th>Company Name</th><th>Stock Symbol</th></tr><tr><td>Test Philippine Corp.</td><td>TPC</td></tr></table>'
     assert _parse_pse_directory_html(fixture).get('TPC')=='Test Philippine Corp.'
     assert _symbol_from_query('explain recursion') is None
     mock={'symbol':'TSLA','price':378.73,'session':'regular/latest','timestamp_utc':'2026-10-05 20:00:01 UTC','currency':'USD','exchange':'NasdaqGS','previous_close':370.59,'change':8.14,'change_percent':2.196,'market_cap':1200000000000,'dividend_rate':None,'dividend_yield':None,'source':'Yahoo Finance structured quote','source_url':'https://finance.yahoo.com/quote/TSLA/','observed_at':'2026-10-06 05:00:00 UTC'}
-    formatted=_format_direct_quote(mock);assert '378.73 USD' in formatted and '$185.12' not in formatted and '| Price | Change | Market Cap | Dividend | Yield |' in formatted and '| Status | Session | Previous Close | Exchange | Currency |' in formatted and '1.20T USD' in formatted
+    formatted=_format_direct_quote(mock);assert '378.73 USD' in formatted and '$185.12' not in formatted and '| Item | Value |' in formatted and '| Market cap | 1.20T USD |' in formatted and '| Trailing annual dividend | Unavailable |' in formatted
     dividend_mock=dict(mock);dividend_mock.update({'symbol':'TEST','market_cap':15000000000,'dividend_rate':2.5,'dividend_yield':0.035})
-    dividend_text=_format_direct_quote(dividend_mock);assert '15.00B USD' in dividend_text and '2.5 USD' in dividend_text and '3.50%' in dividend_text
-    now=datetime(2026,10,6,5,0,0,tzinfo=timezone.utc)
-    assert _quote_freshness({'timestamp_utc':'2026-10-06 04:59:30 UTC','session':'regular/latest'},now)['label']=='🟢 LIVE'
-    assert _quote_freshness({'timestamp_utc':'2026-10-06 04:50:00 UTC','session':'regular/latest'},now)['label']=='🟡 RECENT'
-    assert _quote_freshness({'timestamp_utc':'2026-10-06 03:00:00 UTC','session':'regular/latest'},now)['label']=='🟠 DELAYED'
-    assert _quote_freshness({'timestamp_utc':'2026-10-04 20:00:00 UTC','session':'regular close'},now)['label']=='⚪ LAST CLOSE'
-    up=[float(x) for x in range(1,61)];assert _sma(up,20)==sum(up[-20:])/20 and _rsi14(up)==100.0
-    m,sig,h=_macd(up);assert m is not None and sig is not None and h is not None
-    lv=_scenario_levels_from_closes(up);assert lv and lv['Breakout confirmation']>max(up[-20:]) and lv['Invalidation / risk reference']<min(up[-20:])
-    mock_sig={'scenario_levels':lv}; sizing=_position_sizing_guidance(mock_sig);assert '0.25%' in sizing and '0.50%' in sizing and '1.00%' in sizing and 'Units = (Portfolio Value' in sizing
-    sc=_position_size_scenarios(mock_sig);assert sc and len(sc['rows'])==5 and set(sc['risk_budgets'])=={0.25,0.5,1.0}
-    plot=_position_size_plot(mock_sig);assert 'Position-size scenarios' in plot and 'Risk budget 0.25%' in plot and 'Technical level map' in plot and '█' in plot
-    csv_text=_position_size_csv(mock_sig,'TEST');assert 'symbol,portfolio_value,risk_budget_percent' in csv_text and 'TEST,100000.00,0.50' in csv_text and 'technical_level,value' in csv_text
+    dividend_text=_format_direct_quote(dividend_mock);assert '| Market cap | 15.00B USD |' in dividend_text and '| Trailing annual dividend | 2.5 USD / share |' in dividend_text and '| Trailing dividend yield | 3.50% |' in dividend_text
     return True
 
-__all__=['ENABLED','WEBSEARCH_AVAILABLE','SEARCH_AVAILABLE','web_reply','reply_is_unsure','search_sources','self_test','_extract_candidates','normalize_result','classify_web_intent','analyze_prompt','verify_evidence','grounded_synthesis_messages','_extract_market_quote','_direct_yahoo_quote','_format_direct_quote','_fetch_pse_catalog','_pse_symbol_from_query','_parse_pse_directory_html','_human_money','_percent_value','_quote_freshness','_market_signal','_signal_table','_position_size_csv','export_position_size_csv','_market_index_from_query','_is_market_index']
+__all__=['ENABLED','WEBSEARCH_AVAILABLE','SEARCH_AVAILABLE','web_reply','reply_is_unsure','search_sources','self_test','_extract_candidates','normalize_result','classify_web_intent','analyze_prompt','verify_evidence','grounded_synthesis_messages','_extract_market_quote','_direct_yahoo_quote','_format_direct_quote','_fetch_pse_catalog','_pse_symbol_from_query','_parse_pse_directory_html','_human_money','_percent_value','_dynamic_market_intent','_market_index_from_query']
 if __name__=='__main__':print('self_test:','PASS' if self_test() else 'FAIL')
