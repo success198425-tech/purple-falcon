@@ -5,7 +5,7 @@ from html import unescape
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 
-APP_NAME='Purple Falcon PH'; VERSION='16.8.1'
+APP_NAME='Purple Falcon PH'; VERSION='16.8.2'
 ENABLED=os.getenv('PF_WEBREASON','1').strip().lower() not in ('0','false','no','off')
 MEMORY_FILE=os.getenv('PF_MEMORY_FILE','purple_falcon_memory.json')
 MAX_RESULTS=10; MIN_SOURCES=2
@@ -430,8 +430,39 @@ def _pse_search_quote(symbol):
                 return {'symbol':base+'.PS','price':price,'currency':'PHP','exchange':'PSE','previous_close':price-chg,'change':chg,'change_percent':pct,'session':'Delayed/Last close','timestamp_utc':None,'source':item.get('source') or urlparse(item.get('url','')).netloc,'source_url':item.get('url','')}
     return None
 
+def _stockanalysis_pse_quote(symbol):
+    """Secondary PSE provider retained from the successful 8/10 pipeline."""
+    base=(symbol or '').upper().removesuffix('.PS')
+    if not base:return None
+    url=f'https://stockanalysis.com/quote/pse/{base}/'
+    try:
+        r=requests.get(url,headers={'User-Agent':'Mozilla/5.0 PurpleFalcon/16.8.2','Accept':'text/html,application/xhtml+xml'},timeout=9)
+        if r.status_code!=200:return None
+        text=unescape(re.sub(r'(?is)<[^>]+>',' ',r.text));text=re.sub(r'\s+',' ',text).strip()
+        patterns=[rf'\b{re.escape(base)}\b[^0-9]{{0,120}}([0-9]{{1,5}}(?:\.[0-9]{{1,4}})?)\s+([+\-]?[0-9]{{1,5}}(?:\.[0-9]{{1,4}})?)\s*\(([+\-]?[0-9]+(?:\.[0-9]+)?)%\)',r'At close:\s*[^0-9]{0,40}([0-9]{1,5}(?:\.[0-9]{1,4})?)\s+([+\-]?[0-9]{1,5}(?:\.[0-9]{1,4})?)\s*\(([+\-]?[0-9]+(?:\.[0-9]+)?)%\)']
+        m=next((x for pat in patterns if (x:=re.search(pat,text,re.I))),None)
+        if not m:return None
+        price=float(m.group(1));chg=float(m.group(2));pct=float(m.group(3));prev=price-chg
+        dm=re.search(r'(?:At close:\s*)?([A-Z][a-z]{2}\s+\d{1,2},\s+20\d{2})',text)
+        return {'symbol':base+'.PS','price':price,'currency':'PHP','exchange':'PSE','previous_close':prev,'change':chg,'change_percent':pct,'session':'Delayed/Last close','timestamp_utc':dm.group(1) if dm else None,'source':'StockAnalysis PSE quote','source_url':url}
+    except Exception as e:log.warning('StockAnalysis PSE failed for %s: %s',symbol,e);return None
+
+def _verified_pse_cache_file():return os.getenv('PF_QUOTE_CACHE_FILE','purple_falcon_verified_quotes.json')
+def _verified_pse_cache_quote(symbol):
+    try:
+        path=_verified_pse_cache_file()
+        if not os.path.exists(path):return None
+        data=json.load(open(path,encoding='utf-8'));item=data.get((symbol or '').upper()) if isinstance(data,dict) else None
+        if not isinstance(item,dict) or not isinstance(item.get('price'),(int,float)):return None
+        age=int(time.time())-int(item.get('cached_at') or item.get('verified_at_epoch') or 0)
+        max_age=int(os.getenv('PF_QUOTE_CACHE_HARD_MAX_AGE','259200'))
+        if age<0 or age>max_age:return None
+        out=dict(item);out['session']='Cached verified';out['source']=f"{item.get('source') or 'verified source'} (cached)";return out
+    except Exception:return None
+
 def _resolve_pse_quote(symbol):
-    return _pse_edge_quote(symbol) or _pse_search_quote(symbol) or _direct_yahoo_quote(symbol)
+    # Coverage merge: official ID discovery enhances the prior provider stack rather than replacing it.
+    return (_pse_edge_quote(symbol) or _stockanalysis_pse_quote(symbol) or _pse_search_quote(symbol) or _direct_yahoo_quote(symbol) or _verified_pse_cache_quote(symbol))
 
 def _compact_quote_row(symbol):
     q=_resolve_pse_quote(symbol) if str(symbol).upper().endswith('.PS') else _direct_yahoo_quote(symbol)
@@ -447,13 +478,18 @@ def _format_market_table(query):
     for sym in _market_table_symbols(query,10):
         row=_compact_quote_row(sym)
         if row:rows.append(row)
+        else:rows.append({'symbol':sym,'price':None,'change':None,'pct':None,'currency':'','exchange':'Unavailable','session':'Unavailable','timestamp':None})
     title='Philippine local stocks' if region=='PH' else ('Malaysia local stocks' if region=='MY' else f'{region} local stocks')
     if not rows:return f"💜 **{title}**\n\nI couldn't verify enough structured quotes to build the requested local-stock table right now."
-    out=[f"💜 **{title} — current structured quotes**",'', '| Symbol | Price | Change | Session |','|---|---:|---:|---|']
+    out=[f"💜 **{title} — current structured quotes**",'', '| Symbol | Price | Change | Session | Date | Source |','|---|---:|---:|---|---|---|']
     for r in rows:
         price=f"{r['price']:.2f} {r['currency']}" if isinstance(r['price'],(int,float)) else 'Unavailable'
         change=f"{r['change']:+.2f} ({r['pct']:+.2f}%)" if isinstance(r['change'],(int,float)) and isinstance(r['pct'],(int,float)) else 'Unavailable'
-        out.append(f"| {r['symbol']} | {price} | {change} | {r['session']} |")
+        date='Unknown';source=r.get('source','Unavailable') if isinstance(r,dict) else 'Unavailable'
+        ts=(r or {}).get('timestamp_utc') if isinstance(r,dict) else None
+        if ts:
+            dm=re.search(r'(20\d{2}-\d{2}-\d{2}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2},\s+20\d{2})',str(ts),re.I);date=dm.group(1) if dm else 'Unknown'
+        out.append(f"| {r['symbol']} | {price} | {change} | {r['session']} | {date} | {source} |")
     times=[r.get('timestamp') for r in rows if isinstance(r.get('timestamp'),(int,float))]
     if times:
         out += ['',f"Latest quote timestamp in table: {datetime.fromtimestamp(max(times)).isoformat(sep=' ',timespec='seconds')}"]
@@ -721,6 +757,8 @@ def self_test():
     assert _symbol_from_query('BDO.PS price')=='BDO.PS'
     assert _pse_company_id('BDO.PS')=='260'
     assert callable(_resolve_pse_quote)
+    assert len(_market_table_symbols('tabulate local stocks at PH',10))==10
+    assert callable(_stockanalysis_pse_quote) and callable(_verified_pse_cache_quote)
     # Dynamic local-market tests. Default local market is controlled by PF_LOCAL_MARKET.
     expected_local=_MARKET_CONTEXTS.get(_DEFAULT_LOCAL_MARKET,_MARKET_CONTEXTS['MY'])['index']
     assert _symbol_from_query('local stock update today?')==expected_local
