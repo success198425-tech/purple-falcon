@@ -5,7 +5,7 @@ from html import unescape
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 
-APP_NAME='Purple Falcon PH'; VERSION='16.0.0'
+APP_NAME='Purple Falcon PH'; VERSION='16.1.0'
 ENABLED=os.getenv('PF_WEBREASON','1').strip().lower() not in ('0','false','no','off')
 MEMORY_FILE=os.getenv('PF_MEMORY_FILE','purple_falcon_memory.json')
 MAX_RESULTS=10; MIN_SOURCES=2
@@ -407,7 +407,7 @@ def _format_market_table(query):
     if times:
         result+=f"<div class='pf-market-table-note'>Latest quote timestamp: {_html_escape(datetime.fromtimestamp(max(times),timezone.utc).isoformat(sep=' ',timespec='seconds'))} UTC</div>"
     result+="<div class='pf-market-table-note'>Values come from structured market quotes. Missing counters are skipped rather than guessed.</div>"
-    return result
+    return '<!--PF_MARKET_TABLE-->'+result
 
 
 def _normalize_symbol(symbol):
