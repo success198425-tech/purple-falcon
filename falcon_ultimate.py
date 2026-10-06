@@ -2,7 +2,7 @@
 
 
 # ==================================================
-# 💜 PURPLE FALCON PH v6.10.0 — LIVE SKILLS + SELF-LEARNING + FILE ANALYST + NEWS + LOGO + IMAGE/VIDEO 🇵🇭
+# 💜 PURPLE FALCON PH v6.10.3 — LIVE SKILLS + SELF-LEARNING + FILE ANALYST + NEWS + LOGO + IMAGE/VIDEO 🇵🇭
 # ==================================================
 #   ✅ Live skills that learn: weather, exchange rates, world clock, Wikipedia, web search, web pages, earthquakes, dictionary,
 #      country facts, calculator — used whenever the AI model can't answer or is unreachable (falcon_skills.py)
@@ -268,6 +268,12 @@ try:
 except ImportError:
     websearch, WEB_STATUS = None, "⚠️ falcon_websearch.py not found next to this script"
 
+try:
+    import falcon_webreason as webreason
+    WEBREASON_STATUS = "✅ authoritative web reasoning" if getattr(webreason, "ENABLED", True) else "◻ off (PF_WEBREASON=0)"
+except Exception as e:
+    webreason, WEBREASON_STATUS = None, f"⚠️ falcon_webreason unavailable ({e.__class__.__name__})"
+
 # ==================================================
 # 🧠 LOCAL LEARNING BRAIN  (falcon_reasoning.py)
 # ==================================================
@@ -278,7 +284,7 @@ except Exception as e:
     localbrain, LOCAL_BRAIN_STATUS = None, f"⚠️ falcon_reasoning unavailable ({e.__class__.__name__})"
 
 print("=" * 60)
-print("💜 PURPLE FALCON PH v6.10.0 — PROTECTED 🇵🇭")
+print("💜 PURPLE FALCON PH v6.10.3 — PROTECTED 🇵🇭")
 if ENV_PATH:
     print(f"   .env file:     {'✅' if not ENV_PROBLEMS else '⚠️'} {ENV_LOADED} setting(s) read")
     for _p in ENV_PROBLEMS: print(f"                  ↳ {_p}")
@@ -370,7 +376,7 @@ def build_status_bar_html():
              ("Database", "Not Connected", False)]
     parts = "".join(f'<div class="pf-status-item{" ok" if ok else ""}"><span class="dot"></span><span>{name}: {state}</span></div>'
                     for name, state, ok in items)
-    return parts + '<div class="pf-status-item"><span>Purple Falcon AI v6.10.0</span></div>'
+    return parts + '<div class="pf-status-item"><span>Purple Falcon AI v6.10.3</span></div>'
 
 def build_sidebar_nav_html():
     soon = lambda icon, label: (f'<div class="pf-nav-item disabled"><span>{icon}</span>'
@@ -436,7 +442,7 @@ except Exception as _e:
     print(f"⚠️ Couldn't prepare chat avatar: {_e}")
 
 # ==================================================
-# SETTINGS LOCALIZATION v6.10.0
+# SETTINGS LOCALIZATION v6.10.3
 # ==================================================
 SETTINGS_LANGUAGES=[('English','en'),('Filipino / Tagalog','tl'),('Cebuano / Bisaya','ceb'),('Malay','ms'),('Indonesian','id'),('Spanish','es'),('French','fr'),('German','de'),('Portuguese','pt'),('Italian','it'),('Japanese / 日本語','ja'),('Korean / 한국어','ko')]
 SETTINGS_I18N={
@@ -466,7 +472,7 @@ UI_I18N={
 'it':{'new_chat':'Nuova Chat','workspace':'Area di lavoro','recent':'Recenti','soon':'Prossimamente','copy':'Copia','read':'Leggi ad alta voce','helpful':'Utile','not_helpful':'Non utile','insights':'Approfondimenti AI','run':'Esegui','running':'Esecuzione…','ready':'Pronto','offline':'Offline','not_connected':'Non connesso','knowledge':'Base di conoscenza','database':'Database','tools':'Strumenti','attach':'Allega file','clear':'Cancella','send':'Invia','stop':'Ferma','download':'Scarica','save':'Salva','reset':'Reimposta','close':'Chiudi','processing':'Elaborazione','uploading':'Caricamento','analyzing':'Analisi','generating':'Generazione','verifying':'Verifica'},
 'ja':{'new_chat':'新しいチャット','workspace':'ワークスペース','recent':'最近','soon':'近日公開','copy':'コピー','read':'読み上げ','helpful':'役に立った','not_helpful':'役に立たなかった','insights':'AI インサイト','run':'実行','running':'実行中…','ready':'準備完了','offline':'オフライン','not_connected':'未接続','knowledge':'ナレッジベース','database':'データベース','tools':'ツール','attach':'ファイルを添付','clear':'クリア','send':'送信','stop':'停止','download':'ダウンロード','save':'保存','reset':'リセット','close':'閉じる','processing':'処理中','uploading':'アップロード中','analyzing':'分析中','generating':'生成中','verifying':'確認中'},
 'ko':{'new_chat':'새 채팅','workspace':'작업 공간','recent':'최근','soon':'곧 제공','copy':'복사','read':'소리내어 읽기','helpful':'도움됨','not_helpful':'도움 안 됨','insights':'AI 인사이트','run':'실행','running':'실행 중…','ready':'준비됨','offline':'오프라인','not_connected':'연결 안 됨','knowledge':'지식 베이스','database':'데이터베이스','tools':'도구','attach':'파일 첨부','clear':'지우기','send':'보내기','stop':'중지','download':'다운로드','save':'저장','reset':'재설정','close':'닫기','processing':'처리 중','uploading':'업로드 중','analyzing':'분석 중','generating':'생성 중','verifying':'확인 중'}}
-# v6.10.0 dark-mode accessibility checks
+# v6.10.3 dark-mode accessibility checks
 # WCAG-style relative luminance / contrast helpers for deterministic theme checks.
 def _a11y_hex_rgb(value):
     v=str(value or '').strip().lstrip('#')
@@ -529,6 +535,23 @@ def run_theme_selector_selftests():
     failures=[k for k,v in required.items() if not v]
     return {'passed':not failures,'failures':failures,'checks':required,'count':len(required)}
 
+def run_native_copy_paste_checks():
+    source=globals().get('__file__','')
+    try: text=open(source,'r',encoding='utf-8').read() if source else ''
+    except Exception: text=''
+    required={
+      'editable_detector':'function pfIsEditableTarget(target)' in text,
+      'native_shortcut_guard':'function pfNativeEditingShortcut(e)' in text,
+      'ctrl_or_cmd':'e.ctrlKey || e.metaKey' in text,
+      'clipboard_keys':"['a','c','v','x','z','y']" in text,
+      'no_default_block':'if (pfNativeEditingShortcut(e)) return;' in text,
+      'capture_guard':"e.stopImmediatePropagation();" in text,
+      'text_selection':'user-select: text !important;' in text,
+      'touch_selection':'touch-action: manipulation !important;' in text,
+    }
+    failures=[k for k,v in required.items() if not v]
+    return {'passed':not failures,'failures':failures,'checks':required,'count':len(required)}
+
 def run_keyboard_navigation_checks():
     """Static regression for keyboard-only navigation of the Settings dialog."""
     source=globals().get('__file__','')
@@ -587,7 +610,7 @@ def localized_system_status_html(lang='en'):
 def localized_settings_html(lang='en'):
     x=SETTINGS_I18N.get(lang,SETTINGS_I18N['en']);return f'<div class="pf-settings-title" role="heading" aria-level="2">{x[0]}</div><div class="pf-settings-group-title">{x[2]}</div>'
 def localized_settings_detail_html(lang='en'):
-    x=SETTINGS_I18N.get(lang,SETTINGS_I18N['en']);status=x[7] if AI_CONFIGURED else x[8];on='On' if RUN_CODE_ENABLED else 'Off';return f'<div class="pf-settings-group-title">{x[4]}</div><div style="font-size:.78rem;color:var(--pf-text2)">🎤</div><div class="pf-settings-group-title">{x[5]}</div><div style="font-size:.78rem;color:var(--pf-text2);line-height:1.6">Purple Falcon AI v6.10.0<br>{x[6]}: {on}</div>'
+    x=SETTINGS_I18N.get(lang,SETTINGS_I18N['en']);status=x[7] if AI_CONFIGURED else x[8];on='On' if RUN_CODE_ENABLED else 'Off';return f'<div class="pf-settings-group-title">{x[4]}</div><div style="font-size:.78rem;color:var(--pf-text2)">🎤</div><div class="pf-settings-group-title">{x[5]}</div><div style="font-size:.78rem;color:var(--pf-text2);line-height:1.6">Purple Falcon AI v6.10.3<br>{x[6]}: {on}</div>'
 
 
 def localized_action_updates(lang='en'):
@@ -1007,6 +1030,12 @@ body.pf-tools-open #pf-quick { display: flex !important; }
     max-height: 160px !important;
 }
 #pf-msg textarea::placeholder, #pf-msg input::placeholder { color: var(--pf-muted) !important; }
+#pf-msg textarea, #pf-msg input {
+    pointer-events: auto !important;
+    user-select: text !important;
+    -webkit-user-select: text !important;
+    touch-action: manipulation !important;
+}
 
 #pf-composer-links { width: 100%; max-width: var(--pf-prompt-max-w); min-width: 0; margin: .4rem auto 0 !important; display: flex !important; justify-content: center; gap: .5rem !important; background: transparent !important; border: none !important; }
 #pf-composer-links {
@@ -1041,7 +1070,7 @@ body.pf-tools-open #pf-tools-link { background: var(--pf-bg3) !important; color:
 .pf-status-item .dot { width: 6px; height: 6px; border-radius: 50%; background: #6b7280; flex: 0 0 auto; }
 .pf-status-item.ok .dot { background: #22c55e; }
 
-/* ---------- v6.10.0 unified rounded + fluid responsive shell ---------- */
+/* ---------- v6.10.3 unified rounded + fluid responsive shell ---------- */
 :root {
     --pf-radius-xs: clamp(8px, .55vw, 12px);
     --pf-radius-sm: clamp(12px, .8vw, 16px);
@@ -1110,7 +1139,7 @@ body.pf-tools-open #pf-tools-link { background: var(--pf-bg3) !important; color:
     #pf-app-shell { width: min(calc(100% - 32px), 1760px); }
     #pf-chat-scroll, #pf-composer-area { padding-inline: clamp(1.25rem, 2vw, 2.25rem) !important; }
 }
-/* ---------- v6.10.0 fluid spacing system ---------- */
+/* ---------- v6.10.3 fluid spacing system ---------- */
 :root {
     --pf-space-1: clamp(4px, .28vw, 6px);
     --pf-space-2: clamp(6px, .42vw, 9px);
@@ -1178,12 +1207,12 @@ body.pf-tools-open #pf-tools-link { background: var(--pf-bg3) !important; color:
 @media (min-width: 1600px) {
     :root { --pf-content-pad-x: clamp(1.4rem, 1.8vw, 2.3rem); --pf-section-gap: clamp(1rem, 1.15vw, 1.5rem); }
 }
-/* v6.10.0 theme selector + settings overflow hardening */
+/* v6.10.3 theme selector + settings overflow hardening */
 #pf-settings-panel { overflow-x: hidden !important; }
 #pf-settings-panel > *, #pf-settings-panel .form, #pf-settings-panel .wrap { max-width: 100% !important; min-width: 0 !important; }
 #pf-theme, #pf-settings-language { width: 100% !important; max-width: 100% !important; min-width: 0 !important; }
 #pf-theme .wrap, #pf-settings-language .wrap { overflow: visible !important; }
-/* ---------- v6.10.0 fullscreen shell + all-device settings select fix ---------- */
+/* ---------- v6.10.3 fullscreen shell + all-device settings select fix ---------- */
 html, body, gradio-app, .gradio-container {
     width: 100% !important; max-width: none !important;
     height: 100vh !important; height: 100svh !important; height: 100dvh !important;
@@ -1298,7 +1327,7 @@ body > [role="listbox"] {
     body.pf-sidebar-collapsed .pf-nav-label, body.pf-sidebar-collapsed .pf-nav-section-title, body.pf-sidebar-collapsed .pf-recent-list { display: block !important; }
 }
 @media (max-width: 640px) {
-    /* v6.10.0: touch-friendly bottom sheet plus explicit dark-theme mobile treatment */
+    /* v6.10.3: touch-friendly bottom sheet plus explicit dark-theme mobile treatment */
     #pf-settings-overlay { background: rgba(0,0,0,.52); backdrop-filter: blur(2px); }
     #pf-settings-panel {
         top: auto; right: 0; bottom: 0; left: 0;
@@ -1341,7 +1370,7 @@ body > [role="listbox"] {
     #pf-workspace-header { padding-left: .75rem !important; padding-right: .75rem !important; }
     #pf-status-bar { gap: .6rem !important; font-size: .64rem; flex-wrap: nowrap; overflow-x: auto; justify-content: flex-start !important; padding: 0 .6rem; }
 }
-/* v6.10.0 dark-mode mobile settings */
+/* v6.10.3 dark-mode mobile settings */
 @media (max-width: 640px) {
     :root[data-pf-theme="purple"], :root[data-pf-theme="sunset"], :root[data-pf-theme="ocean"], :root[data-pf-theme="emerald"] { color-scheme: dark; }
     :root[data-pf-theme="purple"] #pf-settings-panel, :root[data-pf-theme="sunset"] #pf-settings-panel, :root[data-pf-theme="ocean"] #pf-settings-panel, :root[data-pf-theme="emerald"] #pf-settings-panel {
@@ -1358,7 +1387,7 @@ body > [role="listbox"] {
     :root[data-pf-theme="purple"] #pf-settings-close, :root[data-pf-theme="sunset"] #pf-settings-close, :root[data-pf-theme="ocean"] #pf-settings-close, :root[data-pf-theme="emerald"] #pf-settings-close { color:var(--pf-text) !important; background:color-mix(in srgb,var(--pf-bg3) 86%,transparent) !important; border-radius:10px !important; }
     :root[data-pf-theme="purple"] #pf-settings-close:hover, :root[data-pf-theme="sunset"] #pf-settings-close:hover, :root[data-pf-theme="ocean"] #pf-settings-close:hover, :root[data-pf-theme="emerald"] #pf-settings-close:hover { background:color-mix(in srgb,var(--pf-accent) 24%,var(--pf-bg3)) !important; }
 }
-/* v6.10.0 accessibility additions for mobile dark settings */
+/* v6.10.3 accessibility additions for mobile dark settings */
 @media (max-width: 640px) {
     #pf-settings-panel button:focus-visible,
     #pf-settings-panel input:focus-visible,
@@ -1395,7 +1424,7 @@ body > [role="listbox"] {
     #pf-composer-links { margin-top: .15rem !important; }
     .pf-welcome { padding-top: .75rem; padding-bottom: .75rem; }
 }
-/* v6.10.0 final safe layout overrides */
+/* v6.10.3 final safe layout overrides */
 html,body,gradio-app,.gradio-container { width:100% !important; max-width:none !important; margin:0 !important; padding:0 !important; border-radius:0 !important; }
 .gradio-container { height:100dvh !important; min-height:100dvh !important; overflow:hidden !important; }
 #pf-app-shell { width:100% !important; max-width:none !important; height:100dvh !important; margin:0 !important; border:0 !important; border-radius:0 !important; box-shadow:none !important; }
@@ -1412,8 +1441,8 @@ html,body,gradio-app,.gradio-container { width:100% !important; max-width:none !
 #pf-settings-panel [role="listbox"],.gradio-container [role="listbox"],body > [role="listbox"] { z-index:10050 !important; pointer-events:auto !important; }
 @media (max-width:640px) and (orientation:portrait){#pf-settings-panel{top:auto !important;left:0 !important;right:0 !important;bottom:0 !important;width:100vw !important;max-width:100vw !important;height:min(88dvh,760px) !important;max-height:88dvh !important;transform:translateY(105%) !important;border-radius:20px 20px 0 0 !important}#pf-settings-panel.pf-open{transform:translateY(0) !important}}
 @media (orientation:landscape) and (max-height:700px) and (max-width:1180px){#pf-settings-panel{top:0 !important;left:auto !important;right:0 !important;bottom:0 !important;width:min(440px,92vw) !important;max-width:92vw !important;height:100dvh !important;max-height:100dvh !important;transform:translateX(105%) !important;border-radius:16px 0 0 16px !important}#pf-settings-panel.pf-open{transform:translateX(0) !important}}
-\n/* v6.10.0 Copilot-style composer, centered in chat column */\n#pf-main{position:relative !important}\n#pf-chat-scroll{padding-bottom:120px !important}\n#pf-composer-area{position:absolute !important;left:0 !important;right:0 !important;bottom:0 !important;z-index:35 !important;border-top:0 !important;background:linear-gradient(to bottom,transparent,var(--pf-bg) 35%) !important;max-height:none !important;overflow:visible !important}\n#pf-inputbar{width:min(980px,calc(100% - 2 * var(--pf-content-pad-x))) !important;max-width:980px !important;margin-left:auto !important;margin-right:auto !important;min-height:76px !important;border-radius:28px !important}\n@media(max-width:640px){#pf-chat-scroll{padding-bottom:98px !important}#pf-inputbar{width:calc(100% - 2 * var(--pf-content-pad-x)) !important;min-height:62px !important;border-radius:24px !important}}\n
-/* v6.10.0 definitive edge-to-edge viewport + tiny AI disclaimer */
+\n/* v6.10.3 Copilot-style composer, centered in chat column */\n#pf-main{position:relative !important}\n#pf-chat-scroll{padding-bottom:120px !important}\n#pf-composer-area{position:absolute !important;left:0 !important;right:0 !important;bottom:0 !important;z-index:35 !important;border-top:0 !important;background:linear-gradient(to bottom,transparent,var(--pf-bg) 35%) !important;max-height:none !important;overflow:visible !important}\n#pf-inputbar{width:min(980px,calc(100% - 2 * var(--pf-content-pad-x))) !important;max-width:980px !important;margin-left:auto !important;margin-right:auto !important;min-height:76px !important;border-radius:28px !important}\n@media(max-width:640px){#pf-chat-scroll{padding-bottom:98px !important}#pf-inputbar{width:calc(100% - 2 * var(--pf-content-pad-x)) !important;min-height:62px !important;border-radius:24px !important}}\n
+/* v6.10.3 definitive edge-to-edge viewport + tiny AI disclaimer */
 html, body, gradio-app, .gradio-container,
 .gradio-container > .main, .gradio-container > .wrap,
 .gradio-container .contain, #root, #root > div {
@@ -1620,6 +1649,12 @@ function pfSpeakLatestReply(){
     window.speechSynthesis.speak(u);
 }
 document.addEventListener('DOMContentLoaded', function(){
+    document.addEventListener('keydown', function(e){
+        if (pfNativeEditingShortcut(e)) {
+            e.stopImmediatePropagation();
+            return;
+        }
+    }, true);
     setTimeout(pfEnhanceScreenReaderSemantics,80);
     document.addEventListener('keydown',pfSettingsKeydown);
     try{
@@ -1692,7 +1727,21 @@ function pfCloseSettings(){
     if(overlay) overlay.classList.remove('pf-open');
     if(pfSettingsReturnFocus && typeof pfSettingsReturnFocus.focus==='function') pfSettingsReturnFocus.focus();
 }
+function pfIsEditableTarget(target){
+    if (!target) return false;
+    try {
+        return !!(target.matches && target.matches('input, textarea, select, [contenteditable="true"], [role="textbox"]')) ||
+               !!(target.closest && target.closest('input, textarea, select, [contenteditable="true"], [role="textbox"]'));
+    } catch(err){ return false; }
+}
+function pfNativeEditingShortcut(e){
+    if (!pfIsEditableTarget(e.target)) return false;
+    if (!(e.ctrlKey || e.metaKey)) return false;
+    var k=(e.key || '').toLowerCase();
+    return ['a','c','v','x','z','y'].indexOf(k) >= 0;
+}
 function pfSettingsKeydown(e){
+    if (pfNativeEditingShortcut(e)) return;
     var panel=document.getElementById('pf-settings-panel');
     if(!panel || !panel.classList.contains('pf-open')) return;
     if(e.key==='Escape'){ e.preventDefault(); pfCloseSettings(); return; }
@@ -3185,7 +3234,7 @@ def falcon_external_needed(message):
     if is_public_information_meta(t): return False
     if _CONFIDENTIAL_META_RE.search(t): return False
     explicit=bool(re.search(r"\b(?:search|research|look ?up|find online|web|internet|source|citation|verify online)\b",t,re.I))
-    current=bool(re.search(r"\b(?:latest|today|current|recent|news|weather|price|release|schedule|live|availability)\b",t,re.I))
+    current=bool(re.search(r"\b(?:latest|today|current|currently|recent|now|ngayon|news|weather|price|release|schedule|live|availability|prime\s+minister|president|ceo|mayor|governor)\b",t,re.I))
     return explicit or current
 
 def offline_reasoning_reply(message):
@@ -4786,6 +4835,34 @@ def analyze_large_code(message, code_inputs):
                 "The chunk findings are not available in this chat; please retry the request.")
     return final
 
+_VERIFY_FOLLOWUP_RE=re.compile(r"^\s*(?:sure|are you sure|really|talaga|sigurado|confirm|verify|check again|recheck|source\??)\s*[?!.]*$",re.I)
+
+def current_followup_context(message,request=None):
+    """A short verification challenge inherits the immediately preceding current-world question."""
+    if not _VERIFY_FOLLOWUP_RE.match(message or ''): return None
+    hist=list(load_chat(request).get('messages') or [])
+    if hist and hist[-1].get('role')=='user': hist=hist[:-1]
+    for m in reversed(hist[-8:]):
+        if m.get('role')!='user': continue
+        q=(m.get('text') or '').strip()
+        if q and falcon_external_needed(q): return q
+    return None
+
+def authoritative_webreason_answer(message,request=None):
+    if not webreason or not getattr(webreason,'ENABLED',True): return None
+    inherited=current_followup_context(message,request)
+    query=inherited or message
+    try:
+        history=load_chat(request).get('messages',[])[-10:]
+        answer=webreason.web_reply(query,call_ai=call_ai,ai_failed_check=ai_failed,system_prompt=get_system_prompt(),history=history)
+        if not isinstance(answer,str) or not answer.strip(): return None
+        if inherited:
+            return "I rechecked the current information.\n\n"+answer.strip()
+        return answer.strip()
+    except Exception as e:
+        print(f"⚠️ Authoritative WebReason failed: {e.__class__.__name__}: {e}")
+        return None
+
 def web_answer(message, request=None, use_ai=True):
     """Safe web research: sanitize outbound query, isolate untrusted evidence, rank trust, then ground the brain."""
     if not websearch or not websearch.ENABLED or not PF_SAFE_WEB:
@@ -4977,7 +5054,7 @@ def apply_confidentiality_guard(reply):
         return confidential_falcon_reply()
     return text
 
-# ---- v6.10.0 public meta conversation regression tests ----
+# ---- v6.10.3 public meta conversation regression tests ----
 _PUBLIC_META_TRUE_CASES=[
 'pano ka ba kumukuha ng information?','paano ka kumukuha ng impormasyon?','how do you get information?','where do you get information?',
 'pano ka naghahanap ng info?','paano ka naghahanap ng data?','saan galing ang information mo?','saan ka kumukuha ng datos?',
@@ -5116,6 +5193,15 @@ def run_local_brain_integration_tests():
     except Exception as e: failures.append(e.__class__.__name__)
     return {'passed':not failures,'failures':failures}
 
+def run_current_followup_guard_tests():
+    cases=['Who is the current Prime Minister of Japan?','what i mean is who latest PM of Japan','Tesla stock price now','latest AI news']
+    failures=[]
+    for q in cases:
+        if not falcon_external_needed(q): failures.append(('missed-current',q))
+    if falcon_external_needed('explain recursion'): failures.append(('false-current','explain recursion'))
+    if not _VERIFY_FOLLOWUP_RE.match('sure?'): failures.append(('missed-followup','sure?'))
+    return {'passed':not failures,'failures':failures,'cases':len(cases)+2}
+
 def chat_reply(message, paths, request=None):
     if not paths:
         if re.search(r"^\s*local brain test\s*[?!.]*$",message or '',re.I):
@@ -5126,6 +5212,12 @@ def chat_reply(message, paths, request=None):
         deterministic=resolve_deterministic_intent(message)
         if deterministic:
             return deterministic['answer'], []
+        current_parent=current_followup_context(message,request)
+        if current_parent or falcon_external_needed(message):
+            answer=authoritative_webreason_answer(message,request)
+            if answer:
+                return answer, []
+            return "💜🦅 I couldn't verify the current fact from trustworthy live evidence. I won't replace it with older model memory. Please try again after the web sources recover.", []
         # Never let persistent local memory answer a current-world request.
         if not falcon_external_needed(message):
             lb_reply=local_brain_answer(message)
