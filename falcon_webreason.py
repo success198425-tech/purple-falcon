@@ -5,7 +5,7 @@ from html import unescape
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 
-APP_NAME='Purple Falcon PH'; VERSION='15.7.0'
+APP_NAME='Purple Falcon PH'; VERSION='15.8.0'
 ENABLED=os.getenv('PF_WEBREASON','1').strip().lower() not in ('0','false','no','off')
 MEMORY_FILE=os.getenv('PF_MEMORY_FILE','purple_falcon_memory.json')
 MAX_RESULTS=10; MIN_SOURCES=2
@@ -149,10 +149,20 @@ def _market_index_from_query(query):
 
 def _is_market_index(symbol):return (symbol or '').upper() in {x.upper() for x in _INDEX_SYMBOLS}
 
+_MARKET_TABLE_RE=re.compile(r'\b(?:table|tabulate|list|compare|comparison|watchlist|basket|top|other|several|multiple)\b',re.I)
+
+def _market_table_request(query):
+    q=clean_query(query);low=q.lower()
+    if not _MARKET_TABLE_RE.search(q):return None
+    region=_explicit_market_region(q) or (_DEFAULT_LOCAL_MARKET if re.search(r'\blocal\b',q,re.I) else None)
+    if re.search(r'\b(?:ph|philippines|philippine|pse)\b',q,re.I):region='PH'
+    if re.search(r'\b(?:my|malaysia|malaysian|bursa|klse)\b',q,re.I):region='MY'
+    return {'intent':'market_table','region':region or _DEFAULT_LOCAL_MARKET}
+
 def _dynamic_market_intent(query):
     q=clean_query(query)
-    ent=_private_market_entity(q)
-    if ent:return {'intent':'market','symbol':None,'kind':'entity','region':ent.get('region')}
+    table=_market_table_request(q)
+    if table:return table
     idx=_market_index_from_query(q)
     if idx:
         region=next((code for code,m in _MARKET_CONTEXTS.items() if m['index']==idx),None)
@@ -172,40 +182,12 @@ def _private_market_entity(query):
         if re.search(r'(?<![a-z0-9])'+re.escape(key)+r'(?![a-z0-9])',low):return dict(meta,key=key)
     return None
 
-def _entity_research_queries(query,ent):
-    name=ent.get('company') or ent.get('key') or clean_query(query)
-    year=datetime.now().year
-    return [f'{name} IPO listing status {year} official',f'{name} stock ticker listing latest',f'{name} IPO news latest']
-
-def _dynamic_entity_market_reply(query,ent,call_ai=None,ai_failed_check=None,system_prompt=None,history=None):
-    """Resolve private/pre-IPO/newly listed entities from fresh evidence every time."""
-    items=search_sources(_entity_research_queries(query,ent)) or []
-    if not items:
-        return f"💜 **{ent.get('company','Company')} market check**\n\nI couldn't verify the current listing/IPO status from live sources, so I won't invent a ticker or share price."
-    ranked=[]
-    for item in items:
-        text=' '.join(str(item.get(k) or '') for k in ('title','body','source','url')).lower();d=_domain(item);score=0
-        if any(x in d for x in ('pse.com.ph','edge.pse.com.ph','sec.gov.ph')):score+=10
-        if any(x in d for x in ('reuters.com','gmanetwork.com','inquirer.net','businessworld.in')):score+=6
-        if any(x in text for x in ('ipo','listing','listed','ticker','trading symbol','offer period','stock exchange')):score+=5
-        if ent.get('key') and ent['key'] in text:score+=3
-        ranked.append((score,item))
-    ranked.sort(key=lambda x:x[0],reverse=True);accepted=[x for score,x in ranked if score>0][:5]
-    if not accepted:return f"💜 **{ent.get('company','Company')} market check**\n\nI found web results, but none were strong enough to verify the current listing/IPO state."
-    evidence='\n\n'.join(f"[{i}] {x.get('title','')}\n{x.get('body','')}\nURL: {x.get('url','')}" for i,x in enumerate(accepted,1))
-    if call_ai:
-        prompt=('CURRENT MARKET-ENTITY MODE. Establish status as of today using evidence only. Distinguish private/not listed, IPO approved/upcoming, offer period, and listed/trading. '
-                'If a future listing date exists, say trading has not begun. If a supported ticker exists, state it. Never invent a live share price before trading. '
-                'If the user asked for news/update, summarize the newest relevant development. Cite [1], [2].')
-        try:
-            msgs=[{'role':'system','content':(system_prompt or '')+'\n'+prompt}]+(history or [])[-4:]+[{'role':'user','content':f'Question: {query}\nToday: {datetime.now():%Y-%m-%d}\n\nEvidence:\n{evidence}'}]
-            ans=call_ai(msgs);failed=ai_failed_check(ans) if ai_failed_check else not bool(ans)
-            if isinstance(ans,str) and ans.strip() and not failed and not reply_is_unsure(ans):return ans.strip()
-        except Exception as e:log.warning('Entity market synthesis failed: %s',e)
-    lines=[f"💜 **{ent.get('company','Company')} current market status**",'']
-    for i,x in enumerate(accepted[:3],1):
-        lines += [f"**{i}. {x.get('title','Update')}**",x.get('body','')[:650],f"Source: {x.get('url','')}",'']
-    return '\n'.join(lines).strip()
+def _private_market_reply(query):
+    ent=_private_market_entity(query)
+    if not ent:return None
+    return (f"💜 **{ent['company']} market check**\n\n"
+            "I could not resolve this name to a verified publicly traded ticker in the market resolver, so I won't invent a live share price.\n\n"
+            "I can research its current IPO/listing status, or you can ask for a related listed security or local market benchmark.")
 
 def classify_web_intent(q):
     if _dynamic_market_intent(q):return 'market'
@@ -349,6 +331,43 @@ def _exchange_from_query(query):
     if 'in-bse' in hits:return 'in-bse'
     if 'in-nse' in hits:return 'in-nse'
     return hits[0] if hits else None
+
+_REGION_BASKETS={
+ 'PH':['BDO.PS','BPI.PS','JFC.PS','SM.PS','SMPH.PS','ALI.PS','TEL.PS','GLO.PS','MER.PS','ICT.PS','ACEN.PS','AP.PS'],
+ 'MY':['1155.KL','1295.KL','1023.KL','5347.KL','5225.KL','5183.KL','6012.KL','6033.KL','8869.KL','3816.KL'],
+}
+
+def _market_table_symbols(query,limit=10):
+    req=_market_table_request(query) or {};region=req.get('region') or _DEFAULT_LOCAL_MARKET
+    syms=list(_REGION_BASKETS.get(region,[]))
+    return syms[:max(1,min(int(limit or 10),15))]
+
+def _compact_quote_row(symbol):
+    q=_direct_yahoo_quote(symbol)
+    if not q:return None
+    price=q.get('price');prev=q.get('previous_close');currency=q.get('currency') or ''
+    change=(price-prev) if isinstance(price,(int,float)) and isinstance(prev,(int,float)) else None
+    pct=(change/prev*100) if isinstance(change,(int,float)) and isinstance(prev,(int,float)) and prev else None
+    return {'symbol':symbol,'price':price,'change':change,'pct':pct,'currency':currency,'exchange':q.get('exchange') or 'Unavailable','session':q.get('session') or 'Unavailable','timestamp':q.get('timestamp')}
+
+def _format_market_table(query):
+    req=_market_table_request(query) or {};region=req.get('region') or _DEFAULT_LOCAL_MARKET
+    rows=[]
+    for sym in _market_table_symbols(query,10):
+        row=_compact_quote_row(sym)
+        if row:rows.append(row)
+    title='Philippine local stocks' if region=='PH' else ('Malaysia local stocks' if region=='MY' else f'{region} local stocks')
+    if not rows:return f"💜 **{title}**\n\nI couldn't verify enough structured quotes to build the requested local-stock table right now."
+    out=[f"💜 **{title} — current structured quotes**",'', '| Symbol | Price | Change | Session |','|---|---:|---:|---|']
+    for r in rows:
+        price=f"{r['price']:.2f} {r['currency']}" if isinstance(r['price'],(int,float)) else 'Unavailable'
+        change=f"{r['change']:+.2f} ({r['pct']:+.2f}%)" if isinstance(r['change'],(int,float)) and isinstance(r['pct'],(int,float)) else 'Unavailable'
+        out.append(f"| {r['symbol']} | {price} | {change} | {r['session']} |")
+    times=[r.get('timestamp') for r in rows if isinstance(r.get('timestamp'),(int,float))]
+    if times:
+        out += ['',f"Latest quote timestamp in table: {datetime.fromtimestamp(max(times)).isoformat(sep=' ',timespec='seconds')}"]
+    out += ['', 'Values come from structured market quotes. Missing counters are skipped rather than guessed.']
+    return '\n'.join(out)
 
 def _normalize_symbol(symbol):
     value=(symbol or '').strip().upper().replace(' ', '')
@@ -556,8 +575,9 @@ def web_reply(message,call_ai=None,ai_failed_check=None,system_prompt=None,brain
     if not policy['fresh'] and policy['intent']=='general':return None
     query=policy['query']
     if policy['intent']=='market':
-        ent=_private_market_entity(query)
-        if ent:return _dynamic_entity_market_reply(query,ent,call_ai,ai_failed_check,system_prompt,history)
+        if _market_table_request(query):return _format_market_table(query)
+        private_reply=_private_market_reply(query)
+        if private_reply:return private_reply
         symbol=_symbol_from_query(query)
         direct=_direct_yahoo_quote(symbol) if symbol else None
         if direct:return _format_direct_quote(direct)
@@ -615,6 +635,10 @@ def self_test():
     assert _symbol_from_query('how is the local market now')==expected_local
     assert _symbol_from_query('PSEi today')=='PSEI.PS'
     assert _dynamic_market_intent('local stocks today')['kind']=='index'
+    assert _market_table_request('can you tabulate result for other local stocks at PH?')['region']=='PH'
+    assert _dynamic_market_intent('can you tabulate result for other local stocks at PH?')['intent']=='market_table'
+    assert _market_table_symbols('tabulate local stocks PH',3)==['BDO.PS','BPI.PS','JFC.PS']
+    assert _market_table_symbols('compare local stocks Malaysia',2)==['1155.KL','1295.KL']
     assert _symbol_from_query('Malaysia stock update today')=='^KLSE'
     assert _symbol_from_query('Philippines stock update')=='PSEI.PS'
     assert _symbol_from_query('Singapore stock market today')=='^STI'
@@ -624,9 +648,6 @@ def self_test():
     assert _symbol_from_query('BDO stock Philippines')=='BDO.PS'
     assert _symbol_from_query('gcash stock now?') is None
     assert _private_market_entity('gcash stock now?')['kind']=='private_or_unlisted'
-    assert _dynamic_market_intent('GCash Stock Update and news today?')['kind']=='entity'
-    assert _dynamic_market_intent('GCash IPO update today')['region']=='PH'
-    assert len(_entity_research_queries('gcash news',_private_market_entity('gcash')))>=3
     fixture='<table><tr><th>Company Name</th><th>Stock Symbol</th></tr><tr><td>Test Philippine Corp.</td><td>TPC</td></tr></table>'
     assert _parse_pse_directory_html(fixture).get('TPC')=='Test Philippine Corp.'
     assert _symbol_from_query('explain recursion') is None
@@ -636,5 +657,5 @@ def self_test():
     dividend_text=_format_direct_quote(dividend_mock);assert '| Market cap | 15.00B USD |' in dividend_text and '| Trailing annual dividend | 2.5 USD / share |' in dividend_text and '| Trailing dividend yield | 3.50% |' in dividend_text
     return True
 
-__all__=['ENABLED','WEBSEARCH_AVAILABLE','SEARCH_AVAILABLE','web_reply','reply_is_unsure','search_sources','self_test','_extract_candidates','normalize_result','classify_web_intent','analyze_prompt','verify_evidence','grounded_synthesis_messages','_extract_market_quote','_direct_yahoo_quote','_format_direct_quote','_fetch_pse_catalog','_pse_symbol_from_query','_parse_pse_directory_html','_human_money','_percent_value','_dynamic_market_intent','_market_index_from_query','_local_market_region','_private_market_entity','_entity_research_queries','_dynamic_entity_market_reply']
+__all__=['ENABLED','WEBSEARCH_AVAILABLE','SEARCH_AVAILABLE','web_reply','reply_is_unsure','search_sources','self_test','_extract_candidates','normalize_result','classify_web_intent','analyze_prompt','verify_evidence','grounded_synthesis_messages','_extract_market_quote','_direct_yahoo_quote','_format_direct_quote','_fetch_pse_catalog','_pse_symbol_from_query','_parse_pse_directory_html','_human_money','_percent_value','_dynamic_market_intent','_market_index_from_query','_local_market_region','_private_market_entity','_market_table_request','_market_table_symbols','_format_market_table']
 if __name__=='__main__':print('self_test:','PASS' if self_test() else 'FAIL')
