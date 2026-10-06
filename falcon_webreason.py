@@ -5,7 +5,7 @@ from html import unescape
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 
-APP_NAME='Purple Falcon PH'; VERSION='15.3.0'
+APP_NAME='Purple Falcon PH'; VERSION='15.4.0'
 ENABLED=os.getenv('PF_WEBREASON','1').strip().lower() not in ('0','false','no','off')
 MEMORY_FILE=os.getenv('PF_MEMORY_FILE','purple_falcon_memory.json')
 MAX_RESULTS=10; MIN_SOURCES=2
@@ -266,8 +266,29 @@ def _resolve_international_alias(query):
         return None
     return None
 
+_MARKET_INDEX_ALIASES={
+    'PSEI.PS':(
+      r'\bpsei\b', r'\bphilippine stock market\b', r'\bphilippines stock market\b',
+      r'\bphilippine stocks? (?:update|today|now|market)\b',
+      r'\bphilippines stocks? (?:update|today|now|market)\b',
+      r'\bph stocks? (?:update|today|now|market)\b',
+      r'\bpse market (?:update|today|now)\b',
+    )
+}
+_INDEX_SYMBOLS={'PSEI.PS'}
+
+def _market_index_from_query(query):
+    q=query or ''
+    for symbol,patterns in _MARKET_INDEX_ALIASES.items():
+        if any(re.search(p,q,re.I) for p in patterns):return symbol
+    return None
+
+def _is_market_index(symbol):return (symbol or '').upper() in _INDEX_SYMBOLS
+
 def _symbol_from_query(query):
     q=(query or '').strip(); low=q.lower()
+    market_index=_market_index_from_query(q)
+    if market_index:return market_index
     pse=_pse_symbol_from_query(q)
     if pse:return pse
     intl=_resolve_international_alias(q)
@@ -560,6 +581,13 @@ def _position_sizing_guidance(sig):
     lines += ['', '**Worked example (illustrative only):** For a 100,000 portfolio and 0.50% risk budget, risk capital = 500.00; illustrative units = '+f'{500/risk_per_unit:.2f}'+'.', 'This is educational risk-budget math, not a personalized recommendation. Actual sizing must account for fees, slippage, lot sizes, currency conversion, liquidity, taxes, leverage, and the possibility of gaps beyond the invalidation level.']
     return '\n'.join(lines)
 
+def _index_signal_table(symbol):
+    sig=_market_signal(symbol);i=sig.get('indicators') or {}
+    fmt=lambda x:f'{x:.2f}' if isinstance(x,(int,float)) else 'Unavailable'
+    if sig.get('signal')=='⚪ INSUFFICIENT DATA':
+        return '\n'.join(['','| Index Signal | Risk | Reason |','|---|---|---|',f"| {sig.get('signal')} | {sig.get('risk')} | {_md_cell(sig.get('reason'))} |"])
+    return '\n'.join(['','| Index Signal | Trend | Momentum |','|---|---|---|',f"| {sig.get('signal')} | {'Up' if (i.get('SMA20') and i.get('SMA50') and i['SMA20']>i['SMA50']) else 'Down / Mixed'} | RSI {fmt(i.get('RSI14'))}, MACD hist {fmt(i.get('MACD_hist'))} |",'', '| PSEi Technical Reference | Value |','|---|---:|',f"| SMA20 | {fmt(i.get('SMA20'))} |",f"| SMA50 | {fmt(i.get('SMA50'))} |",f"| SMA200 | {fmt(i.get('SMA200'))} |",f"| 20-day support | {fmt(i.get('Support20'))} |",f"| 20-day resistance | {fmt(i.get('Resistance20'))} |",'', '**Note:** PSEi is a benchmark index. Position-size and trade-entry calculations are suppressed for the index itself; ask for a specific PSE stock for those scenarios.'])
+
 def _signal_table(symbol):
     sig=_market_signal(symbol);i=sig.get('indicators') or {}
     fmt=lambda x: f'{x:.2f}' if isinstance(x,(int,float)) else 'Unavailable'
@@ -620,7 +648,10 @@ def _format_direct_quote(q):
       'Market data may be delayed. Use the session and quote timestamp above.'
     ]
     base='\n'.join(x for x in lines if x!='')
-    return base + _signal_table(q.get('symbol'))
+    symbol=q.get('symbol')
+    if _is_market_index(symbol):
+        return base + _index_signal_table(symbol)
+    return base + _signal_table(symbol)
 
 def _market_quote_answer(query,items):
     q=_extract_market_quote(query,items)
@@ -704,6 +735,11 @@ def self_test():
     assert _symbol_from_query('Maynilad PSE stock')=='MYNLD.PS'
     assert _symbol_from_query('ACEN PSE price now')=='ACEN.PS'
     assert _symbol_from_query('BDO.PS price')=='BDO.PS'
+    assert _symbol_from_query('Philippines stock update')=='PSEI.PS'
+    assert _symbol_from_query('what I mean Philippines stock update')=='PSEI.PS'
+    assert _symbol_from_query('PSEi today')=='PSEI.PS'
+    assert _symbol_from_query('Philippine stock market now')=='PSEI.PS'
+    assert _is_market_index('PSEI.PS')
     fixture='<table><tr><th>Company Name</th><th>Stock Symbol</th></tr><tr><td>Test Philippine Corp.</td><td>TPC</td></tr></table>'
     assert _parse_pse_directory_html(fixture).get('TPC')=='Test Philippine Corp.'
     assert _symbol_from_query('explain recursion') is None
@@ -725,5 +761,5 @@ def self_test():
     csv_text=_position_size_csv(mock_sig,'TEST');assert 'symbol,portfolio_value,risk_budget_percent' in csv_text and 'TEST,100000.00,0.50' in csv_text and 'technical_level,value' in csv_text
     return True
 
-__all__=['ENABLED','WEBSEARCH_AVAILABLE','SEARCH_AVAILABLE','web_reply','reply_is_unsure','search_sources','self_test','_extract_candidates','normalize_result','classify_web_intent','analyze_prompt','verify_evidence','grounded_synthesis_messages','_extract_market_quote','_direct_yahoo_quote','_format_direct_quote','_fetch_pse_catalog','_pse_symbol_from_query','_parse_pse_directory_html','_human_money','_percent_value','_quote_freshness','_market_signal','_signal_table','_position_size_csv','export_position_size_csv']
+__all__=['ENABLED','WEBSEARCH_AVAILABLE','SEARCH_AVAILABLE','web_reply','reply_is_unsure','search_sources','self_test','_extract_candidates','normalize_result','classify_web_intent','analyze_prompt','verify_evidence','grounded_synthesis_messages','_extract_market_quote','_direct_yahoo_quote','_format_direct_quote','_fetch_pse_catalog','_pse_symbol_from_query','_parse_pse_directory_html','_human_money','_percent_value','_quote_freshness','_market_signal','_signal_table','_position_size_csv','export_position_size_csv','_market_index_from_query','_is_market_index']
 if __name__=='__main__':print('self_test:','PASS' if self_test() else 'FAIL')
