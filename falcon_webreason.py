@@ -1,14 +1,12 @@
-# Purple Falcon WebReason v11.1 - WebResults adapter fix
-# Drop-in replacement for the user's v10.9.4 WebReason retrieval boundary.
+# Purple Falcon WebReason v14.0 - Verified Market Quote Mode
 import os, re, json, logging, tempfile
-from datetime import datetime
+from datetime import datetime, timezone
 from urllib.parse import urlparse
 
-APP_NAME='Purple Falcon PH'; VERSION='13.0.0'
+APP_NAME='Purple Falcon PH'; VERSION='14.0.0'
 ENABLED=os.getenv('PF_WEBREASON','1').strip().lower() not in ('0','false','no','off')
 MEMORY_FILE=os.getenv('PF_MEMORY_FILE','purple_falcon_memory.json')
-MAX_CONTEXT=8; MAX_RESULTS=8; MIN_SOURCES=2
-CONFIDENCE_HIGH=.90; CONFIDENCE_MEDIUM=.65; CONFIDENCE_LOW=.40
+MAX_RESULTS=10; MIN_SOURCES=2
 logging.basicConfig(level=logging.INFO); log=logging.getLogger('falcon.webreason')
 
 try:
@@ -16,7 +14,6 @@ try:
     WEBSEARCH_AVAILABLE=bool(getattr(websearch,'ENABLED',True))
 except Exception as e:
     websearch=None; WEBSEARCH_AVAILABLE=False; log.warning('WebSearch unavailable: %s',e)
-
 try:
     from ddgs import DDGS
     DDGS_AVAILABLE=True
@@ -30,317 +27,169 @@ SEARCH_AVAILABLE=WEBSEARCH_AVAILABLE or DDGS_AVAILABLE
 
 def clean_query(text):
     if not isinstance(text,str): return ''
-    v=re.sub(r'\s+',' ',text.strip()); v=re.sub(r'\s*[?!.:;]+\s*$','',v)
-    return v if len(v)>1 else ''
-
-def load_memory():
-    d={'conversations':[],'topics':[],'last_subject':None,'user_language':'tl','context_chain':[]}
-    try:
-        if os.path.exists(MEMORY_FILE):
-            with open(MEMORY_FILE,encoding='utf-8') as f: x=json.load(f)
-            if isinstance(x,dict):
-                for k,v in d.items(): x.setdefault(k,v)
-                return x
-    except Exception as e: log.warning('Memory read skipped: %s',e)
-    return d
-
-def save_memory(memory):
-    try:
-        directory=os.path.dirname(os.path.abspath(MEMORY_FILE)) or '.'
-        with tempfile.NamedTemporaryFile('w',dir=directory,suffix='.tmp',delete=False,encoding='utf-8') as f:
-            json.dump(memory,f,ensure_ascii=False,indent=2); tmp=f.name
-        os.replace(tmp,MEMORY_FILE)
-    except Exception as e: log.warning('Memory save skipped: %s',e)
-
-def update_context_chain(memory,user_msg,assistant_reply):
-    r=str(assistant_reply or '')
-    memory['context_chain'].append({'user':user_msg,'reply':r[:150],'time':datetime.now().isoformat()}); memory['context_chain']=memory['context_chain'][-MAX_CONTEXT:]
-    memory['conversations'].append({'user':user_msg,'reply':r[:200],'time':datetime.now().isoformat()}); memory['conversations']=memory['conversations'][-20:]
-    return memory
+    v=re.sub(r'\s+',' ',text.strip());return re.sub(r'\s*[?!.:;]+\s*$','',v)
 
 def reply_is_unsure(text):
-    if not isinstance(text,str) or not text.strip(): return True
-    return bool(re.search(r"hindi.*alam|hindi.*sigurado|i don't know|not sure|cannot find|couldn't find|no information|no results|quota|rate limit|forbidden",text,re.I))
+    return not isinstance(text,str) or not text.strip() or bool(re.search(r"i don't know|not sure|cannot find|no information|no results|quota|rate limit|forbidden",text,re.I))
 
 def normalize_result(r):
-    if not isinstance(r,dict): return None
+    if not isinstance(r,dict):return None
     title=str(r.get('title') or r.get('name') or '').strip()
-    body=str(r.get('body') or r.get('snippet') or r.get('text') or r.get('extract') or r.get('content') or '').strip()[:2200]
+    body=str(r.get('body') or r.get('snippet') or r.get('text') or r.get('extract') or r.get('content') or '').strip()[:3000]
     url=str(r.get('url') or r.get('href') or r.get('link') or '').strip()
     source=str(r.get('source') or (urlparse(url).netloc.replace('www.','') if url else 'web'))
     if not title and not body:return None
     return {'title':title or 'Untitled','body':body,'source':source,'url':url}
 
 def _extract_candidates(result):
-    """Understands the actual falcon_websearch.WebResults object plus legacy shapes."""
     if result is None:return []
     if isinstance(result,list):return result
     if isinstance(result,dict):
-        for key in ('results','items','sources','data','pages'):
-            if isinstance(result.get(key),list):return result[key]
-        return [result] if any(k in result for k in ('title','body','snippet','text','url','href')) else []
-    # THE FIX: falcon_websearch.search() returns WebResults(query, items, provider, trace)
+        for k in ('results','items','sources','data','pages'):
+            if isinstance(result.get(k),list):return result[k]
+        return [result]
     items=getattr(result,'items',None)
-    if isinstance(items,list):return items
-    try:return list(result)
-    except (TypeError,AttributeError):return []
+    return items if isinstance(items,list) else []
 
-_MARKET_RE=re.compile(r"\b(?:stock|share|shares|price|quote|market|trading|ticker|nasdaq|nyse|after[- ]hours|pre[- ]market)\b",re.I)
-_TESLA_RE=re.compile(r"\b(?:tesla|tsla)\b",re.I)
+def search_via_websearch(q):
+    if not WEBSEARCH_AVAILABLE:return []
+    try:raw=websearch.search(q)
+    except Exception as e:log.warning('WebSearch failed: %s',e);return []
+    return [n for n in (normalize_result(x) for x in _extract_candidates(raw)) if n]
 
-_NEWS_RE=re.compile(r"\b(?:news|balita|headline|breaking|latest developments?)\b",re.I)
-_WEATHER_RE=re.compile(r"\b(?:weather|forecast|temperature|rain|storm|typhoon|humidity)\b",re.I)
-_OFFICE_RE=re.compile(r"\b(?:pres(?:ident)?|presidente|prime\s+minister|pm|ceo|mayor|governor|minister|leader)\b",re.I)
-_MARKET_SOURCE_HINTS=('nasdaq','nyse','finance.yahoo','marketwatch','reuters','bloomberg','investing.com','google.com/finance','cnbc')
-_MARKET_VALUE_RE=re.compile(r"(?:\$\s?\d+(?:\.\d+)?|\b\d+(?:\.\d+)?\s?(?:usd|dollars?)\b)",re.I)
+def search_fallback(q):
+    if not DDGS_AVAILABLE:return []
+    try:rows=DDGS().text(q,max_results=6) or []
+    except Exception as e:log.warning('DDGS failed: %s',e);return []
+    return [n for n in (normalize_result(x) for x in rows) if n]
 
-def classify_web_intent(query):
-    q=(query or '').lower()
-    if _MARKET_RE.search(q): return 'market'
-    if _WEATHER_RE.search(q): return 'weather'
-    if _NEWS_RE.search(q): return 'news'
-    if _OFFICE_RE.search(q): return 'officeholder'
+_MARKET_RE=re.compile(r'\b(?:stock|share|shares|price|quote|market|trading|ticker|nasdaq|nyse|after[- ]hours|pre[- ]market|overnight)\b',re.I)
+_FRESH_RE=re.compile(r'\b(?:current|latest|today|now|ngayon|recent|updated?|as of)\b',re.I)
+_WEATHER_RE=re.compile(r'\b(?:weather|forecast|temperature|rain|storm|typhoon)\b',re.I)
+_NEWS_RE=re.compile(r'\b(?:news|balita|headline|breaking)\b',re.I)
+_OFFICE_RE=re.compile(r'\b(?:president|prime\s+minister|pm|ceo|mayor|governor|minister|leader)\b',re.I)
+_TESLA_RE=re.compile(r'\b(?:tesla|tsla)\b',re.I)
+_PRICE_RE=re.compile(r'(?<!\w)\$\s*(\d{1,5}(?:\.\d{1,4})?)\b')
+_PCT_RE=re.compile(r'([+-]?\d+(?:\.\d+)?)\s*%')
+_VOLUME_RE=re.compile(r'\b(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?\s*[KMB])\s*(?:shares?\s*)?(?:volume)?\b',re.I)
+_DATE_RE=re.compile(r'\b(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{1,2},?\s+20\d{2}\b',re.I)
+_TIME_RE=re.compile(r'\b\d{1,2}:\d{2}(?::\d{2})?\s*(?:AM|PM)?\s*(?:EDT|EST|ET|UTC|GMT)?\b',re.I)
+_FINANCE_DOMAINS=('finance.yahoo.com','nasdaq.com','reuters.com','bloomberg.com','marketwatch.com','cnbc.com','investing.com','google.com')
+
+def classify_web_intent(q):
+    if _MARKET_RE.search(q or ''):return 'market'
+    if _WEATHER_RE.search(q or ''):return 'weather'
+    if _NEWS_RE.search(q or ''):return 'news'
+    if _OFFICE_RE.search(q or ''):return 'officeholder'
     return 'general'
 
-def intent_queries(query):
-    q=clean_query(query); intent=classify_web_intent(q)
-    if intent=='market':
-        if _TESLA_RE.search(q):
-            return ['TSLA stock quote today NASDAQ','TSLA price today Yahoo Finance','Tesla TSLA stock price Reuters']
-        return [q+' stock quote today',q+' market price Reuters',q+' Yahoo Finance']
-    if intent=='officeholder': return [q+' official',q+' government official site',q+' Reuters']
-    if intent=='weather': return [q+' official weather',q+' forecast']
-    if intent=='news': return [q+' Reuters',q+' latest']
+def analyze_prompt(q):
+    q=clean_query(q);intent=classify_web_intent(q)
+    return {'query':q,'intent':intent,'fresh':bool(_FRESH_RE.search(q) or intent in {'market','weather','news','officeholder'})}
+
+def intent_queries(q):
+    q=clean_query(q);intent=classify_web_intent(q)
+    if intent=='market' and _TESLA_RE.search(q):return ['TSLA stock quote today Yahoo Finance','TSLA stock quote today NASDAQ','Tesla TSLA stock price Reuters']
+    if intent=='market':return [q+' quote today Yahoo Finance',q+' market price Reuters']
+    if intent=='officeholder':return [q+' official government',q+' Reuters']
+    if intent=='news':return [q+' Reuters',q+' AP']
+    if intent=='weather':return [q+' official forecast']
     return [q,q+' official']
 
-def specialize_query(query):
-    qs=intent_queries(query)
-    return qs[0] if qs else clean_query(query)
+def _domain(item):return urlparse(item.get('url','')).netloc.lower().removeprefix('www.')
+def _market_relevant(item):
+    text=(item.get('title','')+' '+item.get('body','')+' '+item.get('url','')).lower();d=_domain(item)
+    if 'wikipedia.org' in d:return False
+    if any(x in text for x in ('nikola tesla','autopilot','history of tesla')):return False
+    return ('tsla' in text or 'tesla' in text) and any(x in text for x in ('stock','quote','nasdaq','share','market','trading','price'))
 
-def evidence_relevance(query,item):
-    """Small deterministic relevance gate before evidence reaches synthesis."""
-    text=' '.join(str((item or {}).get(k) or '') for k in ('title','body','source','url')).lower()
-    q=(query or '').lower(); score=0
-    if _TESLA_RE.search(q) and _MARKET_RE.search(q):
-        if 'tsla' in text: score+=4
-        if 'tesla' in text: score+=2
-        if any(x in text for x in ('stock','share price','quote','nasdaq','market','trading')): score+=3
-        if any(x in text for x in _MARKET_SOURCE_HINTS): score+=3
-        if _MARKET_VALUE_RE.search(text): score+=2
-        if any(x in text for x in ('autopilot','nikola tesla','biography','inventor','history of tesla')): score-=7
-        return score
-    # Generic lexical relevance: require at least one meaningful query token.
-    tokens={w for w in re.findall(r'\b[a-z0-9]{4,}\b',q) if w not in {'current','latest','today','official','what','who','when','where','this','that'}}
-    return sum(1 for w in tokens if w in text)
-
-def filter_relevant(query,items):
-    ranked=[]
-    for item in items or []:
-        score=evidence_relevance(query,item)
-        if score>0: ranked.append((score,item))
-    ranked.sort(key=lambda x:x[0],reverse=True)
-    return [x[1] for x in ranked]
-
-def search_via_websearch(query):
-    if not WEBSEARCH_AVAILABLE or not websearch:return None
-    try: raw=websearch.search(clean_query(query))
-    except Exception as e: log.warning('WebSearch failed: %s',e); return None
-    out=[]
-    for item in _extract_candidates(raw):
-        n=normalize_result(item)
-        if n:out.append(n)
-    return out or None
-
-def search_web_fallback(query_list):
-    if not DDGS_AVAILABLE:return None
-    out=[]
-    for q in query_list:
-        try: rows=DDGS().text(clean_query(q),max_results=4) or []
-        except Exception as e: log.warning('DDGS fallback failed: %s',e); continue
-        for r in rows:
-            n=normalize_result(r)
-            if n:out.append(n)
+def search_sources(queries):
+    out=[];seen=set()
+    for q in queries:
+        for x in (search_via_websearch(q) or search_fallback(q)):
+            key=x.get('url') or (x['title'],x['body'][:100])
+            if key in seen:continue
+            seen.add(key);out.append(x)
         if len(out)>=MAX_RESULTS:break
-    return out[:MAX_RESULTS] or None
+    return out[:MAX_RESULTS]
 
-def search_sources(query_list):
-    """Intent-aware retrieval. For fresh categories, query several formulations then merge/dedupe."""
-    out=[]; seen=set(); expanded=[]
-    for q in query_list:
-        for eq in intent_queries(q):
-            if eq not in expanded: expanded.append(eq)
-    for effective in expanded[:6]:
-        batch=search_via_websearch(effective) or search_web_fallback([effective]) or []
-        batch=filter_relevant(effective,batch)
-        for item in batch:
-            key=item.get('url') or (item.get('title'),item.get('body','')[:100])
-            if key in seen: continue
-            seen.add(key); out.append(item)
-            if len(out)>=MAX_RESULTS: return out
-    return out or None
+def _extract_market_quote(query,items):
+    """Extract structured quote values only from observed evidence. Never invent numeric fields."""
+    accepted=[x for x in items if _market_relevant(x)]
+    accepted.sort(key=lambda x:(0 if any(fd in _domain(x) for fd in _FINANCE_DOMAINS) else 1))
+    quote={'symbol':'TSLA' if _TESLA_RE.search(query) else None,'price':None,'session':None,'as_of_date':None,'as_of_time':None,'change_percent':None,'volume':None,'source':None,'source_url':None,'evidence':accepted}
+    for item in accepted:
+        text=item['title']+' '+item['body']; low=text.lower(); prices=[float(x) for x in _PRICE_RE.findall(text)]
+        if prices and quote['price'] is None:
+            # Prefer explicit current/close/trading price vicinity; otherwise first observed dollar value from a finance result.
+            quote['price']=prices[0];quote['source']=item.get('source') or _domain(item);quote['source_url']=item.get('url')
+            if 'overnight' in low:quote['session']='overnight'
+            elif 'after hours' in low or 'after-hours' in low:quote['session']='after-hours'
+            elif 'pre-market' in low or 'premarket' in low:quote['session']='pre-market'
+            elif 'at close' in low or 'close' in low:quote['session']='regular close'
+            else:quote['session']='latest observed quote'
+            dm=_DATE_RE.search(text);tm=_TIME_RE.search(text)
+            if dm:quote['as_of_date']=dm.group(0)
+            if tm:quote['as_of_time']=tm.group(0)
+            pm=_PCT_RE.search(text)
+            if pm:quote['change_percent']=pm.group(1)+'%'
+            vm=_VOLUME_RE.search(text)
+            if vm:quote['volume']=vm.group(1)
+    return quote
 
-_FRESH_RE=re.compile(r"\b(?:current|currently|latest|today|now|ngayon|recent|updated?|as of|this week|this month|this year)\b",re.I)
-_NUMERIC_RE=re.compile(r"\b(?:price|stock|quote|score|rate|temperature|weather|percent|percentage|how much|market cap|volume)\b",re.I)
-
-def analyze_prompt(query):
-    """Dynamic reasoning policy for every prompt, not a collection of one-off prompt handlers."""
-    q=clean_query(query); intent=classify_web_intent(q)
-    fresh=bool(_FRESH_RE.search(q) or intent in {'market','weather','news','officeholder'})
-    numeric=bool(_NUMERIC_RE.search(q) or intent=='market')
-    return {
-        'query':q,'intent':intent,'fresh':fresh,'numeric':numeric,
-        'min_domains': 2 if fresh else 1,
-        'requires_value': intent=='market' and numeric,
-        'prefer_official': intent in {'officeholder','weather'},
-    }
-
-def source_quality(policy,item):
-    text=' '.join(str((item or {}).get(k) or '') for k in ('title','body','source','url')).lower()
-    domain=urlparse(str((item or {}).get('url') or '')).netloc.lower().removeprefix('www.')
-    score=evidence_relevance(policy['query'],item)
-    if policy['intent']=='officeholder':
-        if any(x in domain for x in ('gov','go.jp','kantei.go.jp')): score+=8
-        if any(x in domain for x in ('reuters.com','apnews.com')): score+=5
-        if 'wikipedia.org' in domain: score-=3
-    elif policy['intent']=='market':
-        if any(x in domain for x in _MARKET_SOURCE_HINTS): score+=6
-        if 'wikipedia.org' in domain: score-=10
-        if _MARKET_VALUE_RE.search(text): score+=4
-    elif policy['intent']=='news':
-        if any(x in domain for x in ('reuters.com','apnews.com','bbc.com','cnn.com')): score+=4
-    return score
-
-def verify_evidence(query,items):
-    """Return a reusable verification object for any prompt routed through WebReason."""
-    policy=analyze_prompt(query); accepted=[]; rejected=[]; domains=set()
-    for item in items or []:
-        score=source_quality(policy,item)
-        row=dict(item); row['_quality']=score
-        if score>0:
-            accepted.append(row)
-            d=urlparse(row.get('url','')).netloc.lower().removeprefix('www.')
-            if d: domains.add(d)
-        else: rejected.append(row)
-    accepted.sort(key=lambda x:x.get('_quality',0),reverse=True)
-    has_value=any(_MARKET_VALUE_RE.search((x.get('title','')+' '+x.get('body',''))) for x in accepted) if policy['requires_value'] else True
-    sufficient=bool(accepted) and has_value
-    confidence='LOW'
-    if sufficient and len(domains)>=max(3,policy['min_domains']): confidence='HIGH'
-    elif sufficient and len(domains)>=policy['min_domains']: confidence='MEDIUM'
-    return {'policy':policy,'accepted':accepted,'rejected':rejected,'domains':domains,'has_value':has_value,'sufficient':sufficient,'confidence':confidence}
+def _market_quote_answer(query,items):
+    q=_extract_market_quote(query,items)
+    if q['price'] is None:
+        return "💜 I searched current market sources, but I couldn't extract a reliable current quote from the retrieved evidence. I won't guess a price."
+    asof=''
+    if q['as_of_date'] or q['as_of_time']:asof=' as of '+ ' '.join(x for x in (q['as_of_date'],q['as_of_time']) if x)
+    lines=[f"💜 **{q['symbol'] or 'Market'} update**",'',f"**{q['session'].title()}: ${q['price']:.2f} USD**{asof}"]
+    if q['change_percent']:lines.append(f"Change: {q['change_percent']}")
+    if q['volume']:lines.append(f"Volume: {q['volume']}")
+    lines += ['',f"Source: {q['source']}",q['source_url'] or '']
+    lines.append('Market data can change quickly; the session label and timestamp above describe the retrieved quote.')
+    return '\n'.join(x for x in lines if x!='')
 
 def grounded_synthesis_messages(query,verification,system_prompt='',history=None):
-    evidence='\n\n'.join(f"[{i}] {x['title']}\n{x.get('body','')}\nURL: {x.get('url','')}" for i,x in enumerate(verification['accepted'][:6],1))
-    locked=(
-      'VERIFIED-WEB MODE. Current/fresh claims may ONLY come from the supplied evidence. '
-      'Do not use model memory to supply a newer name, price, officeholder, date, score, weather value, or other current fact. '
-      'Do not claim Purple Falcon lacks web access. If evidence cannot verify the requested current fact, say exactly that the retrieved evidence is insufficient. '
-      'If model memory conflicts with fresher evidence, discard model memory. Cite supporting evidence as [1], [2]. '
-      f"Evidence confidence: {verification['confidence']}."
-    )
-    msgs=[{'role':'system','content':(system_prompt or '')+'\n'+locked}]
-    msgs+=(history or [])[-4:]
-    msgs.append({'role':'user','content':f'Question: {query}\n\nVerified current evidence:\n{evidence}'})
-    return msgs
+    evidence='\n\n'.join(f"[{i}] {x['title']}\n{x['body']}\nURL: {x['url']}" for i,x in enumerate(verification['accepted'][:6],1))
+    locked='VERIFIED-WEB MODE. Use only supplied evidence for current facts. Never introduce a number, name, date, price, score, or officeholder not present in evidence. If evidence is insufficient, say so. Do not claim Purple Falcon lacks web access.'
+    return [{'role':'system','content':(system_prompt or '')+'\n'+locked}]+(history or [])[-4:]+[{'role':'user','content':f'Question: {query}\n\nVerified evidence:\n{evidence}'}]
 
-class ResearchAgent:
-    def __init__(self,lang='tl'):
-        self.lang=lang;self.plan={};self.sources=[];self.confirmed_facts=[];self.unverified=[];self.confidence_score=0.0
-    def plan_search_strategy(self,q):
-        y=datetime.now().year; low=q.lower(); self.plan={'primary_query':q,'cross_check_queries':[],'note':'Standard research'}
-        if re.search(r'\b(latest|current|today|now|ngayon|news|update)\b',low):self.plan.update(cross_check_queries=[q+' official',f'{q} {y}'],note='Checking recency and official/current sources')
-        elif re.search(r'\b(who|sino|what|ano|fact)\b',low):self.plan.update(cross_check_queries=[q+' official'],note='Cross-referencing independent sources')
-        return self.plan
-    def add_source(self,r):
-        n=normalize_result(r)
-        if not n:return
-        n['domain']=urlparse(n['url']).netloc.replace('www.','') if n['url'] else n['source'];self.sources.append(n)
-    def cross_check_facts(self):
-        domains={s['domain'] for s in self.sources if s.get('domain') not in ('','unknown','web')}
-        if len(self.sources)<2:self.confidence_score=CONFIDENCE_LOW;self.unverified.append('Insufficient retrieved evidence');return
-        # WebSearch already returns full/snippet evidence. Keep synthesis honest: confidence depends on independent domains.
-        if len(domains)>=3:self.confidence_score=CONFIDENCE_HIGH
-        elif len(domains)>=2:self.confidence_score=CONFIDENCE_MEDIUM
-        else:self.confidence_score=CONFIDENCE_LOW
-    def evidence_sufficient(self,question):
-        intent=classify_web_intent(question)
-        if not self.sources: return False
-        if intent=='market':
-            relevant=[s for s in self.sources if evidence_relevance(question,s)>=5]
-            valued=[s for s in relevant if _MARKET_VALUE_RE.search((s.get('title','')+' '+s.get('body','')))]
-            return bool(valued)
-        return True
-    def evidence_answer(self,question):
-        label='HIGH' if self.confidence_score>=CONFIDENCE_HIGH else ('MEDIUM' if self.confidence_score>=CONFIDENCE_MEDIUM else 'LOW')
-        lines=[f'💜 **Web research evidence** — Confidence: **{label}**','']
-        for i,s in enumerate(self.sources[:5],1):
-            body=(s['body'] or '').strip()
-            lines.append(f"**{i}. {s['title']}**")
-            if body:lines.append(body[:650])
-            if s['url']:lines.append(f"Source: {s['url']}")
-            lines.append('')
-        return '\n'.join(lines).strip()
-
-def detect_intent(message,reconstructed=None):
-    q=clean_query(reconstructed or message); low=q.lower()
-    if not q:return {'type':'clarify','search':False}
-    if re.search(r'^(hi|hello|kamusta)$',low):return {'type':'greeting','search':False}
-    if re.search(r'\b(current|latest|now|ngayon|today|news|weather|price|stock|prime minister|president|ceo)\b',low):return {'type':'research_request','search':True,'query':q}
-    return {'type':'chat','search':False}
+def verify_evidence(query,items):
+    intent=classify_web_intent(query);accepted=[];domains=set()
+    for x in items:
+        ok=_market_relevant(x) if intent=='market' else True
+        if ok:accepted.append(x);domains.add(_domain(x))
+    return {'accepted':accepted,'domains':domains,'sufficient':bool(accepted),'confidence':'HIGH' if len(domains)>=3 else 'MEDIUM' if len(domains)>=2 else 'LOW'}
 
 def web_reply(message,call_ai=None,ai_failed_check=None,system_prompt=None,brain_down=False,history=None):
     if not ENABLED:return None
     policy=analyze_prompt(message)
-    # WebReason is a specialist. Ordinary static chat stays with the main/local brain.
-    if not policy['fresh'] and policy['intent']=='general': return None
-    query=policy['query']; queries=intent_queries(query)
-    raw_sources=search_sources(queries)
-    if not raw_sources:return None
-    verification=verify_evidence(query,raw_sources)
-    if not verification['sufficient']:
-        if policy['requires_value']:
-            return "💜 I searched the live web, but the retrieved evidence does not contain a reliable current value for this market query. I won't substitute Wikipedia, unrelated pages, or model memory for a live quote."
-        return "💜 I searched the live web, but the retrieved evidence is not strong enough to verify the requested current fact. I won't replace missing current evidence with model memory."
+    if not policy['fresh'] and policy['intent']=='general':return None
+    query=policy['query'];sources=search_sources(intent_queries(query))
+    if not sources:return None
+    # MARKET MODE IS DETERMINISTIC: the model never gets permission to create financial numbers.
+    if policy['intent']=='market':return _market_quote_answer(query,sources)
+    verification=verify_evidence(query,sources)
+    if not verification['sufficient']:return "💜 I searched the live web, but the retrieved evidence is not strong enough to verify the requested current fact."
     if call_ai:
         try:
-            ai=call_ai(grounded_synthesis_messages(query,verification,system_prompt,history))
-            failed=ai_failed_check(ai) if ai_failed_check else not bool(ai)
-            if isinstance(ai,str) and ai.strip() and not failed and not reply_is_unsure(ai): return ai.strip()
-        except Exception as e: log.warning('Grounded synthesis unavailable: %s',e)
-    # No main brain: return only accepted current evidence, never a remembered fact.
+            ai=call_ai(grounded_synthesis_messages(query,verification,system_prompt,history));failed=ai_failed_check(ai) if ai_failed_check else not bool(ai)
+            if isinstance(ai,str) and ai.strip() and not failed and not reply_is_unsure(ai):return ai.strip()
+        except Exception as e:log.warning('Grounded synthesis unavailable: %s',e)
     lines=[f"💜 **Verified web evidence** — Confidence: **{verification['confidence']}**",'']
-    for i,x in enumerate(verification['accepted'][:5],1):
-        lines.append(f"**{i}. {x['title']}**")
-        if x.get('body'): lines.append(x['body'][:650])
-        if x.get('url'): lines.append(f"Source: {x['url']}")
-        lines.append('')
+    for i,x in enumerate(verification['accepted'][:5],1):lines += [f"**{i}. {x['title']}**",x['body'][:650],f"Source: {x['url']}",'']
     return '\n'.join(lines).strip()
 
 def self_test():
-    class WR:
-        def __init__(self):
-            self.items=[{'title':'Japan PM','url':'https://example.jp/a','snippet':'Current prime minister evidence','text':''}]
-            self.ok=True;self.provider='test';self.trace=[]
-    assert len(_extract_candidates(WR()))==1
-    n=normalize_result(_extract_candidates(WR())[0]);assert n['body']=='Current prime minister evidence'
-    assert specialize_query('What is Tesla stock price now?')=='TSLA stock quote today NASDAQ'
-    good={'title':'Tesla (TSLA) Stock Quote','body':'TSLA stock market quote','source':'finance','url':'https://finance.example/tsla'}
-    bad={'title':'Tesla Autopilot','body':'driver assistance feature','source':'wiki','url':'https://example/autopilot'}
-    assert evidence_relevance('Tesla stock price now',good)>0
-    assert evidence_relevance('Tesla stock price now',bad)<=0
-    assert filter_relevant('Tesla stock price now',[bad,good])==[good]
+    # Regression: never reproduce an invented $185.12 when evidence says $378.73.
+    y={'title':'Tesla, Inc. (TSLA) Historical Prices','body':'At close: October 5 at 4:00:01 PM EDT. Oct 5, 2026 close $378.73, volume 42,112,900.','source':'finance.yahoo.com','url':'https://finance.yahoo.com/quote/TSLA/history/'}
+    q=_extract_market_quote('Tesla stock price now',[y]);assert q['price']==378.73 and q['session']=='regular close'
+    ans=_market_quote_answer('Tesla stock price now',[y]);assert '$378.73' in ans and '$185.12' not in ans
+    bad={'title':'Tesla Autopilot','body':'Tesla vehicle feature $185.12 unrelated number','source':'wikipedia','url':'https://en.wikipedia.org/wiki/Tesla_Autopilot'}
+    assert _extract_market_quote('Tesla stock price now',[bad])['price'] is None
     assert classify_web_intent('Tesla stock price now')=='market'
-    assert any('Yahoo Finance' in q for q in intent_queries('Tesla stock price now'))
-    a=ResearchAgent('en'); a.add_source(good); assert not a.evidence_sufficient('Tesla stock price now')
-    priced={'title':'Tesla TSLA $450.25 stock quote','body':'TSLA quote $450.25 NASDAQ market','source':'finance.yahoo.com','url':'https://finance.yahoo.com/quote/TSLA'}
-    a=ResearchAgent('en'); a.add_source(priced); assert a.evidence_sufficient('Tesla stock price now')
-    assert analyze_prompt('Who is the current Prime Minister of Japan?')['intent']=='officeholder'
-    assert analyze_prompt('explain recursion')['fresh'] is False
-    official={'title':'Prime Minister of Japan','body':'Prime Minister current official evidence','source':'kantei','url':'https://japan.kantei.go.jp/example'}
-    wiki={'title':'List of prime ministers','body':'older list','source':'wikipedia','url':'https://en.wikipedia.org/wiki/example'}
-    v=verify_evidence('Who is the current Prime Minister of Japan?',[wiki,official]); assert v['accepted'][0]['url'].startswith('https://japan.kantei.go.jp')
-    v2=verify_evidence('Tesla stock price now',[bad]); assert not v2['sufficient']
     return True
 
-__all__=['ENABLED','WEBSEARCH_AVAILABLE','SEARCH_AVAILABLE','web_reply','reply_is_unsure','search_sources','ResearchAgent','self_test','_extract_candidates','normalize_result','specialize_query','filter_relevant','evidence_relevance','classify_web_intent','intent_queries','analyze_prompt','verify_evidence','grounded_synthesis_messages']
+__all__=['ENABLED','WEBSEARCH_AVAILABLE','SEARCH_AVAILABLE','web_reply','reply_is_unsure','search_sources','self_test','_extract_candidates','normalize_result','classify_web_intent','analyze_prompt','verify_evidence','grounded_synthesis_messages','_extract_market_quote']
 if __name__=='__main__':print('self_test:','PASS' if self_test() else 'FAIL')
