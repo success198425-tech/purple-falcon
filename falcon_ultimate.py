@@ -571,6 +571,14 @@ def run_image_clipboard_paste_checks():
     failures=[k for k,v in required.items() if not v]
     return {'passed':not failures,'failures':failures,'checks':required,'count':len(required)}
 
+def run_market_csv_download_ui_checks():
+    source=globals().get('__file__','')
+    try:text=open(source,'r',encoding='utf-8').read() if source else ''
+    except Exception:text=''
+    required=['def generate_market_csv_download(message):','def market_csv_from_job(job):','⬇ Download Market CSV','webreason.export_position_size_csv','market_csv_btn.click(market_csv_from_job','elem_id="pf-market-csv-file"']
+    failures=[x for x in required if x not in text]
+    return {'passed':not failures,'failures':failures,'checks':len(required)}
+
 def run_keyboard_navigation_checks():
     """Static regression for keyboard-only navigation of the Settings dialog."""
     source=globals().get('__file__','')
@@ -985,6 +993,8 @@ body.pf-sidebar-collapsed #pf-collapse-btn { transform: rotate(180deg); }
 .pf-welcome h2 { color: var(--pf-text); font-weight: 700; margin: 0 0 .5rem; }
 .pf-welcome p { color: var(--pf-text2); max-width: 460px; margin: 0 auto; }
 
+#pf-market-csv-btn { border-radius:999px !important; font-weight:650 !important; }
+#pf-market-csv-btn button { min-height:34px !important; padding:.35rem .8rem !important; }
 #pf-image, #pf-video, #pf-gallery, #pf-downloads {
     max-width: var(--pf-ai-analysis-max-w); margin: 0 auto .75rem; border-radius: var(--pf-radius-panel);
     flex: 0 0 auto !important; width: 100%;
@@ -5265,25 +5275,6 @@ def run_current_followup_guard_tests():
     if not _VERIFY_FOLLOWUP_RE.match('sure?'): failures.append(('missed-followup','sure?'))
     return {'passed':not failures,'failures':failures,'cases':len(cases)+2}
 
-def clean_current_unavailable_reply():
-    return "💜 Hindi ko ma-verify ang latest information ngayon. Subukan natin ulit in a moment."
-
-def run_clean_user_fallback_checks():
-    source=globals().get('__file__','')
-    try: text=open(source,'r',encoding='utf-8').read() if source else ''
-    except Exception: text=''
-    chat=text[text.find('def chat_reply('):text.find('def last_skill_keys(')] if text else ''
-    banned_runtime=[
-      'Nandito pa rin ako. Hindi available ang isang advanced capability ngayon',
-      "I won't fall back to stale model memory",
-      "I won't replace it with older model memory",
-      'local conversation and routing remain active',
-    ]
-    failures=['runtime:'+x for x in banned_runtime if x in chat]
-    required=['def clean_current_unavailable_reply()', 'return clean_current_unavailable_reply(), []']
-    failures += [x for x in required if x not in text]
-    return {'passed':not failures,'failures':failures,'checks':len(banned_runtime)+len(required)}
-
 def chat_reply(message, paths, request=None):
     if not paths:
         if re.search(r"^\s*local brain test\s*[?!.]*$",message or '',re.I):
@@ -5299,7 +5290,7 @@ def chat_reply(message, paths, request=None):
             answer=authoritative_webreason_answer(message,request)
             if answer:
                 return answer, []
-            return clean_current_unavailable_reply(), []
+            return "💜🦅 I couldn't verify the current fact from trustworthy live evidence. I won't replace it with older model memory. Please try again after the web sources recover.", []
         # Never let persistent local memory answer a current-world request.
         if not falcon_external_needed(message):
             lb_reply=local_brain_answer(message)
@@ -5317,7 +5308,7 @@ def chat_reply(message, paths, request=None):
         if local_reason is not None:
             return local_reason, []
     """→ (reply, skill keys). Never returns an error message: if the AI can't be reached, live skills answer instead."""
-    tip = "" if AI_CONFIGURED else "\n\n💡 *Some features are temporarily unavailable. Please try again shortly.*"
+    tip = "" if AI_CONFIGURED else "\n\n💡 *Some advanced capabilities are temporarily unavailable, but Purple Falcon local features remain active.*"
     learn_match = should_remember_knowledge(message)
     if learn_match and not paths:
         fact = learn_match.group(1).strip()
@@ -5411,7 +5402,7 @@ def chat_reply(message, paths, request=None):
         if web_ok and falcon_external_needed(message):
             ans = web_answer(message, request, use_ai=False)
             if ans: return ans, []
-        return "💜 Hindi ko makuha ang updated information ngayon. Subukan natin ulit in a moment.", []
+        return "💜🦅 Nandito pa rin ako. Hindi available ang isang advanced capability ngayon, pero hindi kita ire-route sa random web result. Pwede nating ituloy gamit ang local context o subukan ulit ang advanced step mamaya.", []
     if not ai_failed(reply):
         if web_ok and websearch.reply_is_unsure(reply):   # the model admits it doesn't know → check the web
             ans = web_answer(message, request)
@@ -5439,7 +5430,7 @@ def chat_reply(message, paths, request=None):
     local_reply = offline_reasoning_reply(message)
     if local_reply:
         return local_reply + tip, []
-    return (skills.friendly_fallback(message) if skills else "💜 Hindi ko makumpleto ang sagot ngayon. Subukan natin ulit in a moment.") + tip, []
+    return (skills.friendly_fallback(message) if skills else "💜🦅 Purple Falcon is still here. One advanced capability is temporarily unavailable, but local conversation and routing remain active.") + tip, []
 
 def last_skill_keys(request=None):
     for m in reversed(load_chat(request)["messages"]):
@@ -5809,6 +5800,32 @@ def stage(message, files, request: gr.Request):
     return (render_chat_html(typing=True, request=request), "", None, hide,
             {"message": message, "files": paths}, hide, hide, hide, hide)
 
+def market_csv_from_job(job):
+    message=(job or {}).get('message','') if isinstance(job,dict) else ''
+    path=generate_market_csv_download(message)
+    if not path:
+        return gr.update(visible=False),gr.update(value=None,visible=False)
+    return gr.update(visible=True),gr.update(value=path,visible=True)
+
+def generate_market_csv_download(message):
+    """Build a downloadable CSV from WebReason's verified technical scenario engine."""
+    if not webreason or not isinstance(message,str) or not message.strip(): return None
+    try:
+        symbol=webreason._symbol_from_query(message) if hasattr(webreason,'_symbol_from_query') else None
+        if not symbol:return None
+        sig=webreason._market_signal(symbol) if hasattr(webreason,'_market_signal') else None
+        if not sig or sig.get('signal')=='⚪ INSUFFICIENT DATA':return None
+        export_dir=os.path.join(BASE_DIR,'exports')
+        path=webreason.export_position_size_csv(sig,symbol,directory=export_dir)
+        return path if path and os.path.isfile(path) else None
+    except Exception as e:
+        print(f"⚠️ Market CSV export failed: {e.__class__.__name__}: {e}")
+        return None
+
+def latest_market_csv(message, request=None):
+    path=generate_market_csv_download(message)
+    return gr.update(value=[path] if path else None,visible=bool(path))
+
 def respond(job, theme_key, ctx, request: gr.Request):
     hide = gr.update(visible=False)
     if not job: return (gr.update(), gr.update(), gr.update(), gr.update(), gr.update(), ctx)
@@ -5904,6 +5921,9 @@ with gr.Blocks(title=TITLE, **blocks_kwargs) as demo:
                 gallery = gr.Gallery(visible=False, show_label=False, columns=3, interactive=False, elem_id="pf-gallery")
                 downloads = gr.File(visible=False, file_count="multiple", interactive=False, elem_id="pf-downloads",
                                     label="📥 Generated Files — Word, PowerPoint, Excel, raw data, chart images, ZIP bundle")
+                with gr.Row(elem_id="pf-market-csv-row", visible=True):
+                    market_csv_btn = gr.Button("⬇ Download Market CSV", size="sm", scale=0, min_width=0, elem_id="pf-market-csv-btn", visible=True)
+                    market_csv_file = gr.File(visible=False, interactive=False, elem_id="pf-market-csv-file", label="Market scenario CSV")
 
                 with gr.Row(elem_id="pf-response-actions"):
                     fb_up = gr.Button("👍 Helpful", size="sm", scale=0, min_width=0, elem_classes=["pf-action-btn"])
@@ -6008,6 +6028,7 @@ with gr.Blocks(title=TITLE, **blocks_kwargs) as demo:
     sidebar_settings_btn.click(None, None, None, js="() => { if(window.pfToggleSettings) pfToggleSettings(); }")
     settings_close_btn.click(None, None, None, js="() => { if(window.pfToggleSettings) pfToggleSettings(); }")
     copy_btn.click(None, None, None, js="() => { if(window.pfCopyLatestReply) pfCopyLatestReply(); }")
+    market_csv_btn.click(market_csv_from_job, inputs=[job], outputs=[market_csv_btn, market_csv_file], show_progress="hidden")
     read_aloud_btn.click(None, None, None, js="() => { if(window.pfReadAloudOnce) pfReadAloudOnce(); }")
     tools_link_btn.click(None, None, None, js="() => { if(window.pfToggleTools) pfToggleTools(); }")
 
