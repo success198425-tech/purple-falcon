@@ -5,7 +5,7 @@ from html import unescape
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 
-APP_NAME='Purple Falcon PH'; VERSION='16.2.0'
+APP_NAME='Purple Falcon PH'; VERSION='16.3.0'
 ENABLED=os.getenv('PF_WEBREASON','1').strip().lower() not in ('0','false','no','off')
 MEMORY_FILE=os.getenv('PF_MEMORY_FILE','purple_falcon_memory.json')
 MAX_RESULTS=10; MIN_SOURCES=2
@@ -385,18 +385,70 @@ def _compact_quote_row(symbol):
     pct=q.get('change_percent') if isinstance(q.get('change_percent'),(int,float)) else ((change/prev*100) if isinstance(change,(int,float)) and isinstance(prev,(int,float)) and prev else None)
     return {'symbol':symbol,'available':isinstance(price,(int,float)),'price':price,'change':change,'pct':pct,'currency':currency,'exchange':q.get('exchange') or 'Unavailable','session':q.get('session') or 'Unavailable','timestamp':q.get('timestamp'),'date':_quote_date(q),'source':q.get('source') or 'Unavailable','route':route}
 
+def _quote_row_from_yahoo_record(rec):
+    if not isinstance(rec,dict):return None
+    symbol=str(rec.get('symbol') or '').upper().strip()
+    price=rec.get('regularMarketPrice')
+    if not symbol or not isinstance(price,(int,float)):return None
+    prev=rec.get('regularMarketPreviousClose')
+    change=rec.get('regularMarketChange') if isinstance(rec.get('regularMarketChange'),(int,float)) else ((price-prev) if isinstance(prev,(int,float)) else None)
+    pct=rec.get('regularMarketChangePercent') if isinstance(rec.get('regularMarketChangePercent'),(int,float)) else ((change/prev*100) if isinstance(change,(int,float)) and isinstance(prev,(int,float)) and prev else None)
+    ts=rec.get('regularMarketTime')
+    return {'symbol':symbol,'available':True,'price':float(price),'change':float(change) if isinstance(change,(int,float)) else None,'pct':float(pct) if isinstance(pct,(int,float)) else None,'currency':rec.get('currency') or '','exchange':rec.get('fullExchangeName') or rec.get('exchange') or 'Unavailable','session':rec.get('marketState') or 'Regular/Latest','timestamp':int(ts) if isinstance(ts,(int,float)) else None,'date':datetime.fromtimestamp(ts,timezone.utc).strftime('%Y-%m-%d') if isinstance(ts,(int,float)) else 'Unknown','source':'Yahoo Finance batch quote','route':'batch'}
+
+def _yahoo_batch_quotes(symbols):
+    """Try Yahoo's multi-symbol quote endpoint first. If Yahoo requires cookie/crumb, return {} and let chart fallback run."""
+    syms=[str(x).upper().strip() for x in symbols or [] if x]
+    if not syms:return {}
+    headers={'User-Agent':'Mozilla/5.0 PurpleFalcon/16.3','Accept':'application/json,text/plain,*/*'}
+    params={'symbols':','.join(syms),'formatted':'false','lang':'en-US','region':'US'}
+    for host in ('https://query1.finance.yahoo.com/v7/finance/quote','https://query2.finance.yahoo.com/v7/finance/quote'):
+        try:
+            r=requests.get(host,params=params,headers=headers,timeout=8)
+            if r.status_code!=200:
+                log.warning('Yahoo batch quote HTTP %s',r.status_code);continue
+            rows=((r.json().get('quoteResponse') or {}).get('result') or [])
+            out={}
+            for rec in rows:
+                row=_quote_row_from_yahoo_record(rec)
+                if row:out[row['symbol']]=row
+            if out:return out
+        except Exception as e:log.warning('Yahoo batch quote failed: %s',e)
+    return {}
+
+def _unavailable_row(symbol,route='unavailable'):
+    return {'symbol':symbol,'available':False,'price':None,'change':None,'pct':None,'currency':'','exchange':'Unavailable','session':'Unavailable','timestamp':None,'date':'Unknown','source':'Unavailable','route':route}
+
 def _batch_quote_rows(symbols,max_workers=4):
-    symbols=list(dict.fromkeys(symbols or []))
+    symbols=list(dict.fromkeys(str(x).upper().strip() for x in (symbols or []) if x))
     if not symbols:return []
-    workers=max(1,min(max_workers,len(symbols)))
-    results={}
-    with futures.ThreadPoolExecutor(max_workers=workers) as ex:
-        jobs={ex.submit(_compact_quote_row,s):s for s in symbols}
-        for fut,sym in jobs.items():
-            try:results[sym]=fut.result()
-            except Exception as e:
-                log.warning('Batch quote failed for %s: %s',sym,e);results[sym]={'symbol':sym,'available':False,'price':None,'change':None,'pct':None,'currency':'','exchange':'Unavailable','session':'Unavailable','timestamp':None,'date':'Unknown','source':'Unavailable','route':'error'}
-    return [results[s] for s in symbols]
+    # Provider 1: one multi-symbol request. This avoids hammering the per-symbol chart endpoint.
+    results=_yahoo_batch_quotes(symbols)
+    missing=[s for s in symbols if s not in results]
+    # Provider 2: structured chart endpoint with retry, concurrently but conservatively.
+    if missing:
+        workers=max(1,min(max_workers,len(missing)))
+        with futures.ThreadPoolExecutor(max_workers=workers) as ex:
+            jobs={ex.submit(_structured_quote_with_retry,s,1,.25):s for s in missing}
+            for fut,sym in jobs.items():
+                try:
+                    q=fut.result()
+                    if q:
+                        price=q.get('price');prev=q.get('previous_close');change=q.get('change');pct=q.get('change_percent')
+                        if not isinstance(change,(int,float)) and isinstance(price,(int,float)) and isinstance(prev,(int,float)):change=price-prev
+                        if not isinstance(pct,(int,float)) and isinstance(change,(int,float)) and isinstance(prev,(int,float)) and prev:pct=change/prev*100
+                        results[sym]={'symbol':sym,'available':isinstance(price,(int,float)),'price':price,'change':change,'pct':pct,'currency':q.get('currency') or '','exchange':q.get('exchange') or 'Unavailable','session':q.get('session') or 'Unavailable','timestamp':q.get('timestamp'),'date':_quote_date(q),'source':q.get('source') or 'Yahoo Finance chart quote','route':'chart'}
+                except Exception as e:log.warning('Chart fallback failed for %s: %s',sym,e)
+    missing=[s for s in symbols if s not in results]
+    # Provider 3: targeted evidence per remaining symbol. Keep partial verified rows even if others fail.
+    for sym in missing:
+        try:
+            q=_fallback_quote_from_search(sym)
+            if q:
+                price=q.get('price');results[sym]={'symbol':sym,'available':isinstance(price,(int,float)),'price':price,'change':None,'pct':None,'currency':q.get('currency') or '','exchange':q.get('exchange') or 'Unavailable','session':q.get('session') or 'Source-timed','timestamp':q.get('timestamp'),'date':_quote_date(q),'source':q.get('source') or 'Web evidence','route':'web-fallback'}
+        except Exception as e:log.warning('Evidence fallback failed for %s: %s',sym,e)
+    return [results.get(s,_unavailable_row(s)) for s in symbols]
+
 
 def _html_escape(value):
     import html
@@ -438,7 +490,7 @@ def _format_market_table(query):
     if not rows:return f"💜 **{title}**\n\nNo symbols were available for this market table."
     result=MARKET_TABLE_CSS+_market_table_html(f'{title} — current market quotes',rows)
     result+=f"<div class='pf-market-table-note'>Requested: {len(rows)} · Verified: {verified} · Unavailable: {unavailable}. Failed symbols do not cancel the table.</div>"
-    result+="<div class='pf-market-table-note'>Structured quotes are retried briefly; failed symbols get a per-symbol web-evidence fallback. Values are never guessed.</div>"
+    result+="<div class='pf-market-table-note'>Provider order: Yahoo multi-symbol batch → Yahoo structured chart retry → per-symbol web evidence. Failed symbols do not cancel verified rows, and values are never guessed.</div>"
     return '<!--PF_MARKET_TABLE-->'+result
 
 
@@ -568,7 +620,7 @@ def _direct_yahoo_quote(symbol):
         market_cap=meta.get('marketCap')
         trailing_dividend_rate=meta.get('trailingAnnualDividendRate')
         trailing_dividend_yield=meta.get('trailingAnnualDividendYield')
-        return {'symbol':symbol,'price':price,'session':label,'timestamp_utc':dt.strftime('%Y-%m-%d %H:%M:%S UTC'),'currency':meta.get('currency') or 'USD','exchange':meta.get('exchangeName') or meta.get('fullExchangeName'),'previous_close':float(prev) if isinstance(prev,(int,float)) else None,'change':change,'change_percent':pct,'market_cap':float(market_cap) if isinstance(market_cap,(int,float)) else None,'dividend_rate':float(trailing_dividend_rate) if isinstance(trailing_dividend_rate,(int,float)) else None,'dividend_yield':float(trailing_dividend_yield) if isinstance(trailing_dividend_yield,(int,float)) else None,'source':'Yahoo Finance structured quote','source_url':f'https://finance.yahoo.com/quote/{symbol}/','observed_at':datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}
+        return {'symbol':symbol,'price':price,'session':label,'timestamp':ts,'timestamp_utc':dt.strftime('%Y-%m-%d %H:%M:%S UTC'),'currency':meta.get('currency') or 'USD','exchange':meta.get('exchangeName') or meta.get('fullExchangeName'),'previous_close':float(prev) if isinstance(prev,(int,float)) else None,'change':change,'change_percent':pct,'market_cap':float(market_cap) if isinstance(market_cap,(int,float)) else None,'dividend_rate':float(trailing_dividend_rate) if isinstance(trailing_dividend_rate,(int,float)) else None,'dividend_yield':float(trailing_dividend_yield) if isinstance(trailing_dividend_yield,(int,float)) else None,'source':'Yahoo Finance structured quote','source_url':f'https://finance.yahoo.com/quote/{symbol}/','observed_at':datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}
     except Exception as e:
         log.warning('Yahoo structured quote failed: %s',e);return None
 
@@ -713,6 +765,8 @@ def self_test():
     assert _market_table_symbols('tabulate local stocks PH',3)==['BDO.PS','BPI.PS','JFC.PS']
     assert _market_table_symbols('compare local stocks Malaysia',2)==['1155.KL','1295.KL']
     assert all(k in _compact_quote_row.__code__.co_names or k in globals() for k in ('_direct_yahoo_quote',))
+    sample=_quote_row_from_yahoo_record({'symbol':'BDO.PS','regularMarketPrice':110.5,'regularMarketPreviousClose':111.0,'regularMarketTime':1760000000,'currency':'PHP','marketState':'CLOSED'})
+    assert sample and sample['symbol']=='BDO.PS' and sample['available']
     assert _symbol_from_query('Malaysia stock update today')=='^KLSE'
     assert _symbol_from_query('Philippines stock update')=='PSEI.PS'
     assert _symbol_from_query('Singapore stock market today')=='^STI'
