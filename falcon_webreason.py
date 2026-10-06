@@ -1,9 +1,10 @@
 # Purple Falcon WebReason v14.0 - Verified Market Quote Mode
-import os, re, json, logging, tempfile
+import os, re, json, logging, tempfile, time
+import requests
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 
-APP_NAME='Purple Falcon PH'; VERSION='14.0.0'
+APP_NAME='Purple Falcon PH'; VERSION='14.1.0'
 ENABLED=os.getenv('PF_WEBREASON','1').strip().lower() not in ('0','false','no','off')
 MEMORY_FILE=os.getenv('PF_MEMORY_FILE','purple_falcon_memory.json')
 MAX_RESULTS=10; MIN_SOURCES=2
@@ -137,6 +138,48 @@ def _extract_market_quote(query,items):
             if vm:quote['volume']=vm.group(1)
     return quote
 
+def _direct_yahoo_quote(symbol):
+    """Direct structured quote provider. Returns only observed Yahoo chart metadata, never model-generated values."""
+    symbol=(symbol or '').upper().strip()
+    if not re.fullmatch(r'[A-Z.\-]{1,12}',symbol): return None
+    url=f'https://query1.finance.yahoo.com/v8/finance/chart/{symbol}'
+    try:
+        r=requests.get(url,params={'interval':'1m','range':'1d','includePrePost':'true'},headers={'User-Agent':'Mozilla/5.0 PurpleFalcon/14.1'},timeout=8)
+        if r.status_code!=200:
+            log.warning('Yahoo structured quote HTTP %s',r.status_code);return None
+        data=r.json(); result=((data.get('chart') or {}).get('result') or [None])[0]
+        if not isinstance(result,dict): return None
+        meta=result.get('meta') or {}; now=int(time.time())
+        candidates=[]
+        for key,label,tkey in [('postMarketPrice','after-hours','postMarketTime'),('preMarketPrice','pre-market','preMarketTime'),('regularMarketPrice','regular/latest','regularMarketTime')]:
+            val=meta.get(key);ts=meta.get(tkey)
+            if isinstance(val,(int,float)):
+                candidates.append((int(ts or 0),label,float(val),key))
+        if not candidates:return None
+        candidates.sort(key=lambda x:x[0],reverse=True);ts,label,price,key=candidates[0]
+        if not ts: ts=int(meta.get('regularMarketTime') or now)
+        dt=datetime.fromtimestamp(ts,timezone.utc)
+        prev=meta.get('chartPreviousClose') or meta.get('previousClose')
+        change=price-float(prev) if isinstance(prev,(int,float)) else None
+        pct=(change/float(prev)*100) if change is not None and float(prev)!=0 else None
+        return {'symbol':symbol,'price':price,'session':label,'timestamp_utc':dt.strftime('%Y-%m-%d %H:%M:%S UTC'),'currency':meta.get('currency') or 'USD','exchange':meta.get('exchangeName') or meta.get('fullExchangeName'),'previous_close':float(prev) if isinstance(prev,(int,float)) else None,'change':change,'change_percent':pct,'source':'Yahoo Finance structured quote','source_url':f'https://finance.yahoo.com/quote/{symbol}/','observed_at':datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}
+    except Exception as e:
+        log.warning('Yahoo structured quote failed: %s',e);return None
+
+def _symbol_from_query(query):
+    if _TESLA_RE.search(query or ''): return 'TSLA'
+    m=re.search(r'\b(?:ticker|symbol)\s*[:=]?\s*([A-Z]{1,6})\b',query or '')
+    return m.group(1) if m else None
+
+def _format_direct_quote(q):
+    if not q:return None
+    lines=[f"💜 **{q['symbol']} market update**",'',f"**{q['session'].title()}: ${q['price']:.2f} {q['currency']}**",f"Timestamp: {q['timestamp_utc']}"]
+    if q.get('change') is not None and q.get('change_percent') is not None: lines.append(f"Change vs previous close: {q['change']:+.2f} ({q['change_percent']:+.2f}%)")
+    if q.get('previous_close') is not None: lines.append(f"Previous close: ${q['previous_close']:.2f}")
+    if q.get('exchange'): lines.append(f"Exchange: {q['exchange']}")
+    lines += ['',f"Source: {q['source']}",q['source_url'],'',f"Retrieved: {q['observed_at']}","Market quotes can be delayed depending on exchange and source coverage; rely on the timestamp/session shown above."]
+    return '\n'.join(lines)
+
 def _market_quote_answer(query,items):
     q=_extract_market_quote(query,items)
     if q['price'] is None:
@@ -166,10 +209,16 @@ def web_reply(message,call_ai=None,ai_failed_check=None,system_prompt=None,brain
     if not ENABLED:return None
     policy=analyze_prompt(message)
     if not policy['fresh'] and policy['intent']=='general':return None
-    query=policy['query'];sources=search_sources(intent_queries(query))
+    query=policy['query']
+    if policy['intent']=='market':
+        symbol=_symbol_from_query(query)
+        direct=_direct_yahoo_quote(symbol) if symbol else None
+        if direct:return _format_direct_quote(direct)
+        sources=search_sources(intent_queries(query))
+        if not sources:return "💜 I couldn't retrieve a current structured market quote or trustworthy market evidence right now. I won't guess a price."
+        return _market_quote_answer(query,sources)
+    sources=search_sources(intent_queries(query))
     if not sources:return None
-    # MARKET MODE IS DETERMINISTIC: the model never gets permission to create financial numbers.
-    if policy['intent']=='market':return _market_quote_answer(query,sources)
     verification=verify_evidence(query,sources)
     if not verification['sufficient']:return "💜 I searched the live web, but the retrieved evidence is not strong enough to verify the requested current fact."
     if call_ai:
@@ -189,7 +238,10 @@ def self_test():
     bad={'title':'Tesla Autopilot','body':'Tesla vehicle feature $185.12 unrelated number','source':'wikipedia','url':'https://en.wikipedia.org/wiki/Tesla_Autopilot'}
     assert _extract_market_quote('Tesla stock price now',[bad])['price'] is None
     assert classify_web_intent('Tesla stock price now')=='market'
+    assert _symbol_from_query('Tesla stock price now')=='TSLA'
+    mock={'symbol':'TSLA','price':378.73,'session':'regular/latest','timestamp_utc':'2026-10-05 20:00:01 UTC','currency':'USD','exchange':'NasdaqGS','previous_close':370.59,'change':8.14,'change_percent':2.196,'source':'Yahoo Finance structured quote','source_url':'https://finance.yahoo.com/quote/TSLA/','observed_at':'2026-10-06 05:00:00 UTC'}
+    formatted=_format_direct_quote(mock);assert '$378.73 USD' in formatted and '$185.12' not in formatted and 'Timestamp:' in formatted
     return True
 
-__all__=['ENABLED','WEBSEARCH_AVAILABLE','SEARCH_AVAILABLE','web_reply','reply_is_unsure','search_sources','self_test','_extract_candidates','normalize_result','classify_web_intent','analyze_prompt','verify_evidence','grounded_synthesis_messages','_extract_market_quote']
+__all__=['ENABLED','WEBSEARCH_AVAILABLE','SEARCH_AVAILABLE','web_reply','reply_is_unsure','search_sources','self_test','_extract_candidates','normalize_result','classify_web_intent','analyze_prompt','verify_evidence','grounded_synthesis_messages','_extract_market_quote','_direct_yahoo_quote','_format_direct_quote']
 if __name__=='__main__':print('self_test:','PASS' if self_test() else 'FAIL')
