@@ -5,7 +5,7 @@ from html import unescape
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 
-APP_NAME='Purple Falcon PH'; VERSION='16.5.0'
+APP_NAME='Purple Falcon PH'; VERSION='16.6.0'
 ENABLED=os.getenv('PF_WEBREASON','1').strip().lower() not in ('0','false','no','off')
 MEMORY_FILE=os.getenv('PF_MEMORY_FILE','purple_falcon_memory.json')
 MAX_RESULTS=10; MIN_SOURCES=2
@@ -430,22 +430,51 @@ def _stockanalysis_pse_quote(symbol):
         log.warning('StockAnalysis PSE failed for %s: %s',symbol,e);return None
 
 def _pse_quote_from_websearch(symbol):
-    """Search fallback tuned for PSE snippets where prices often appear without an explicit PHP token."""
+    """PSE-specific current quote fallback using official/PSE-aware search evidence."""
     base=_pse_base_symbol(symbol)
     if not base:return None
-    queries=[f'site:stockanalysis.com/quote/pse/{base} {base} stock price',f'PSE {base} stock price today',f'{base} Philippine stock price']
-    items=search_sources(queries) or []
+    queries=[
+      f'PSE {base} stock data last traded price today',
+      f'site:edge.pse.com.ph {base} Last Traded Price',
+      f'site:stockanalysis.com/quote/pse/{base} {base} stock price',
+    ]
+    items=[]
+    for q in queries:
+        batch=search_via_websearch(q) or search_web_fallback([q]) or []
+        for x in batch:
+            if x not in items:items.append(x)
+    ranked=[]
     for item in items:
-        text=' '.join(str(item.get(k) or '') for k in ('title','body'))
-        if not re.search(rf'\b{re.escape(base)}\b',text,re.I):continue
-        # Prefer price + signed change + percentage triplet, e.g. 110.60 +0.30 (0.27%).
-        m=re.search(r'\b([0-9]{1,5}(?:\.[0-9]{1,4})?)\s+([+-][0-9]{1,5}(?:\.[0-9]{1,4})?)\s*\(([+-]?[0-9]+(?:\.[0-9]+)?)%\)',text)
-        if not m:continue
-        price=float(m.group(1));change=float(m.group(2));pct=float(m.group(3));prev=price-change
-        dm=re.search(r'\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2},\s+20\d{2}\b',text,re.I)
-        url=item.get('url') or '';source=item.get('source') or (urlparse(url).netloc.removeprefix('www.') if url else 'PSE web evidence')
-        return {'symbol':symbol,'price':price,'previous_close':prev,'change':change,'change_percent':pct,'currency':'PHP','exchange':'PSE','session':'Source-timed/Last close','timestamp':None,'timestamp_utc':dm.group(0) if dm else None,'source':source,'source_url':url}
+        text=' '.join(str(item.get(k) or '') for k in ('title','body','source','url'))
+        low=text.lower();url=item.get('url') or '';domain=urlparse(url).netloc.lower().removeprefix('www.')
+        if not re.search(rf'(?<![a-z0-9]){re.escape(base.lower())}(?![a-z0-9])',low):continue
+        score=0
+        if 'edge.pse.com.ph' in domain:score+=12
+        if 'stockanalysis.com' in domain:score+=9
+        if 'investing.com' in domain:score+=7
+        if any(k in low for k in ('last traded price','at close','stock price','previous close')):score+=5
+        ranked.append((score,item,text,domain))
+    ranked.sort(key=lambda x:x[0],reverse=True)
+    for score,item,text,domain in ranked:
+        # Official PSE EDGE: "Last Traded Price 110.50 ... Previous Close ... 110.50 ... Change ... (0.00%)"
+        m=re.search(r'Last Traded Price\s*([0-9][0-9,]*(?:\.\d+)?)',text,re.I)
+        if m:
+            price=float(m.group(1).replace(',',''))
+            pm=re.search(r'Previous Close(?: and Date)?\s*([0-9][0-9,]*(?:\.\d+)?)',text,re.I)
+            prev=float(pm.group(1).replace(',','')) if pm else None
+            cm=re.search(r'Change(?: \(% Change\))?[^0-9+\-]*([+\-]?[0-9]+(?:\.\d+)?)\s*\(([+\-]?[0-9]+(?:\.\d+)?)%\)',text,re.I)
+            change=float(cm.group(1)) if cm else ((price-prev) if prev is not None else None)
+            pct=float(cm.group(2)) if cm else ((change/prev*100) if change is not None and prev else None)
+            dm=re.search(r'As of\s+([A-Z][a-z]{2}\s+\d{1,2},\s+20\d{2})',text)
+            return {'symbol':symbol,'price':price,'previous_close':prev,'change':change,'change_percent':pct,'currency':'PHP','exchange':'PSE','session':'PSE official / source-timed','timestamp':None,'timestamp_utc':dm.group(1) if dm else None,'source':'PSE EDGE','source_url':item.get('url') or ''}
+        # StockAnalysis / Investing style: 110.50 0.00 (0.00%) or 110.60 +0.30 (0.27%)
+        m=re.search(r'\b([0-9]{1,5}(?:\.\d{1,4})?)\s+([+\-]?[0-9]{1,5}(?:\.\d{1,4})?)\s*\(([+\-]?[0-9]+(?:\.\d+)?)%\)',text)
+        if m:
+            price=float(m.group(1));change=float(m.group(2));pct=float(m.group(3));prev=price-change
+            dm=re.search(r'(?:At close:\s*)?([A-Z][a-z]{2}\s+\d{1,2},\s+20\d{2})',text)
+            return {'symbol':symbol,'price':price,'previous_close':prev,'change':change,'change_percent':pct,'currency':'PHP','exchange':'PSE','session':'Delayed/Last close','timestamp':None,'timestamp_utc':dm.group(1) if dm else None,'source':domain or 'PSE web evidence','source_url':item.get('url') or ''}
     return None
+
 
 def _fallback_quote_from_search(symbol):
     # Per-symbol evidence fallback. Only extract a quote when the evidence explicitly contains symbol + numeric price.
@@ -748,7 +777,11 @@ def web_reply(message,call_ai=None,ai_failed_check=None,system_prompt=None,brain
         private_reply=_private_market_reply(query)
         if private_reply:return private_reply
         symbol=_symbol_from_query(query)
-        direct=_direct_yahoo_quote(symbol) if symbol else None
+        direct=None
+        if symbol and _pse_base_symbol(symbol):
+            direct=_stockanalysis_pse_quote(symbol) or _pse_quote_from_websearch(symbol) or _direct_yahoo_quote(symbol)
+        elif symbol:
+            direct=_direct_yahoo_quote(symbol)
         if direct:return _format_direct_quote(direct)
         sources=search_sources(intent_queries(query))
         if not sources:return "💜 I couldn't retrieve a current structured market quote or trustworthy market evidence right now. I won't guess a price."
@@ -814,6 +847,7 @@ def self_test():
     assert _global_region_from_query('Hong Kong stocks')=='HK'
     assert _global_region_from_query('Germany stocks')=='DE'
     assert _pse_base_symbol('BDO.PS')=='BDO' and _pse_base_symbol('1155.KL') is None
+    assert _symbol_from_query('BDO stock Philippines')=='BDO.PS'
     assert all(k in _compact_quote_row.__code__.co_names or k in globals() for k in ('_direct_yahoo_quote',))
     assert _symbol_from_query('Malaysia stock update today')=='^KLSE'
     assert _symbol_from_query('Philippines stock update')=='PSEI.PS'
