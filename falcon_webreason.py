@@ -5,7 +5,7 @@ from html import unescape
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 
-APP_NAME='Purple Falcon PH'; VERSION='16.6.0'
+APP_NAME='Purple Falcon PH'; VERSION='16.7.0'
 ENABLED=os.getenv('PF_WEBREASON','1').strip().lower() not in ('0','false','no','off')
 MEMORY_FILE=os.getenv('PF_MEMORY_FILE','purple_falcon_memory.json')
 MAX_RESULTS=10; MIN_SOURCES=2
@@ -401,6 +401,100 @@ def _structured_quote_with_retry(symbol,retries=2,backoff=.35):
         if attempt<retries:time.sleep(backoff*(attempt+1))
     return None
 
+QUOTE_CACHE_FILE=os.getenv('PF_QUOTE_CACHE_FILE','purple_falcon_verified_quotes.json')
+QUOTE_CACHE_MAX_AGE=int(os.getenv('PF_QUOTE_CACHE_MAX_AGE','86400'))
+QUOTE_CACHE_HARD_MAX_AGE=int(os.getenv('PF_QUOTE_CACHE_HARD_MAX_AGE','259200'))
+QUOTE_PRICE_TOLERANCE=float(os.getenv('PF_QUOTE_PRICE_TOLERANCE','0.03'))
+
+def _load_quote_cache():
+    try:
+        if not os.path.exists(QUOTE_CACHE_FILE):return {}
+        with open(QUOTE_CACHE_FILE,encoding='utf-8') as f:data=json.load(f)
+        return data if isinstance(data,dict) else {}
+    except Exception as e:log.warning('Quote cache read failed: %s',e);return {}
+
+def _save_quote_cache(data):
+    try:
+        folder=os.path.dirname(os.path.abspath(QUOTE_CACHE_FILE)) or '.';os.makedirs(folder,exist_ok=True)
+        with tempfile.NamedTemporaryFile('w',dir=folder,suffix='.tmp',delete=False,encoding='utf-8') as f:
+            json.dump(data,f,ensure_ascii=False,indent=2);tmp=f.name
+        os.replace(tmp,QUOTE_CACHE_FILE)
+    except Exception as e:log.warning('Quote cache write failed: %s',e)
+
+def _normalize_quote(symbol,q,provider='unknown'):
+    if not isinstance(q,dict) or not isinstance(q.get('price'),(int,float)):return None
+    row=dict(q);row['symbol']=str(symbol or q.get('symbol') or '').upper();row['provider']=provider or row.get('source') or 'unknown'
+    row['verified_at_epoch']=int(time.time());row.setdefault('source',provider);row.setdefault('currency','');row.setdefault('exchange','Unavailable');row.setdefault('session','Unavailable')
+    return row
+
+def _cache_verified_quote(row):
+    if not row or not row.get('symbol') or not isinstance(row.get('price'),(int,float)):return
+    data=_load_quote_cache();item=dict(row);item['cached_at']=int(time.time());data[item['symbol']]=item;_save_quote_cache(data)
+
+def _cached_quote(symbol,hard=False):
+    item=_load_quote_cache().get(str(symbol or '').upper())
+    if not isinstance(item,dict) or not isinstance(item.get('price'),(int,float)):return None
+    age=int(time.time())-int(item.get('cached_at') or item.get('verified_at_epoch') or 0)
+    limit=QUOTE_CACHE_HARD_MAX_AGE if hard else QUOTE_CACHE_MAX_AGE
+    if age<0 or age>limit:return None
+    out=dict(item);out['cache_age_seconds']=age;out['session']='Cached verified';out['source']=f"{item.get('source') or item.get('provider') or 'verified source'} (cached)";out['route']='cache'
+    return out
+
+def _quote_consistent(a,b,tolerance=QUOTE_PRICE_TOLERANCE):
+    if not a or not b:return True
+    pa,pb=a.get('price'),b.get('price')
+    if not isinstance(pa,(int,float)) or not isinstance(pb,(int,float)):return True
+    return abs(pa-pb)/max(abs(pa),abs(pb),1e-9)<=max(0,float(tolerance))
+
+def _quote_freshness(q):
+    if not q:return 'unavailable'
+    if q.get('route')=='cache':return 'cached'
+    ts=q.get('timestamp');age=(time.time()-ts) if isinstance(ts,(int,float)) else None
+    if age is not None and age<=60:return 'live'
+    if age is not None and age<=900:return 'recent'
+    return 'delayed'
+
+class QuoteProvider:
+    name='provider';priority=100
+    def supports(self,symbol):return True
+    def quote(self,symbol):return None
+
+class PSEDirectProvider(QuoteProvider):
+    name='PSE-aware';priority=10
+    def supports(self,symbol):return bool(_pse_base_symbol(symbol))
+    def quote(self,symbol):return _stockanalysis_pse_quote(symbol) or _pse_quote_from_websearch(symbol)
+
+class YahooChartProvider(QuoteProvider):
+    name='Yahoo chart';priority=30
+    def quote(self,symbol):return _structured_quote_with_retry(symbol,1,.25)
+
+class WebEvidenceProvider(QuoteProvider):
+    name='Web evidence';priority=50
+    def quote(self,symbol):return _fallback_quote_from_search(symbol)
+
+def _quote_providers(symbol):
+    providers=[PSEDirectProvider(),YahooChartProvider(),WebEvidenceProvider()]
+    return sorted([p for p in providers if p.supports(symbol)],key=lambda p:p.priority)
+
+def resolve_verified_quote(symbol):
+    """One authoritative quote engine for individual securities and table rows."""
+    observations=[]
+    for provider in _quote_providers(symbol):
+        try:q=_normalize_quote(symbol,provider.quote(symbol),provider.name)
+        except Exception as e:log.warning('%s quote failed for %s: %s',provider.name,symbol,e);q=None
+        if not q:continue
+        observations.append(q)
+        # Two consistent providers is enough to stop; one verified provider remains usable.
+        if len(observations)>=2 and _quote_consistent(observations[0],observations[1]):break
+    if observations:
+        # Prefer freshest timestamp where present; otherwise provider priority/order.
+        observations.sort(key=lambda q:int(q.get('timestamp') or 0),reverse=True)
+        chosen=observations[0]
+        if len(observations)>1 and not _quote_consistent(observations[0],observations[1]):
+            chosen=dict(chosen);chosen['source']=f"{chosen.get('source')} · cross-source discrepancy"
+        chosen['freshness']=_quote_freshness(chosen);_cache_verified_quote(chosen);return chosen
+    return _cached_quote(symbol,hard=False)
+
 def _pse_base_symbol(symbol):
     sym=(symbol or '').upper().strip()
     return sym[:-3] if sym.endswith('.PS') else None
@@ -494,33 +588,25 @@ def _fallback_quote_from_search(symbol):
     return None
 
 def _compact_quote_row(symbol):
-    q=None;route='unavailable'
-    if _pse_base_symbol(symbol):
-        q=_stockanalysis_pse_quote(symbol);route='pse-provider'
-        if not q:
-            q=_pse_quote_from_websearch(symbol);route='pse-web-fallback'
-    if not q:
-        q=_structured_quote_with_retry(symbol);route='structured'
-    if not q:
-        q=_fallback_quote_from_search(symbol);route='web-fallback'
-    if not q:return {'symbol':symbol,'available':False,'price':None,'change':None,'pct':None,'currency':'','exchange':'Unavailable','session':'Unavailable','timestamp':None,'date':'Unknown','source':'Unavailable','route':'unavailable'}
-    price=q.get('price');prev=q.get('previous_close');currency=q.get('currency') or ''
-    change=q.get('change') if isinstance(q.get('change'),(int,float)) else ((price-prev) if isinstance(price,(int,float)) and isinstance(prev,(int,float)) else None)
-    pct=q.get('change_percent') if isinstance(q.get('change_percent'),(int,float)) else ((change/prev*100) if isinstance(change,(int,float)) and isinstance(prev,(int,float)) and prev else None)
-    return {'symbol':symbol,'available':isinstance(price,(int,float)),'price':price,'change':change,'pct':pct,'currency':currency,'exchange':q.get('exchange') or 'Unavailable','session':q.get('session') or 'Unavailable','timestamp':q.get('timestamp'),'date':_quote_date(q),'source':q.get('source') or 'Unavailable','route':route}
+    q=resolve_verified_quote(symbol)
+    if not q:return {'symbol':symbol,'available':False,'price':None,'change':None,'pct':None,'currency':'','exchange':'Unavailable','session':'Unavailable','timestamp':None,'date':'Unknown','source':'Unavailable','route':'unavailable','freshness':'unavailable'}
+    price=q.get('price');prev=q.get('previous_close');change=q.get('change');pct=q.get('change_percent')
+    if not isinstance(change,(int,float)) and isinstance(price,(int,float)) and isinstance(prev,(int,float)):change=price-prev
+    if not isinstance(pct,(int,float)) and isinstance(change,(int,float)) and isinstance(prev,(int,float)) and prev:pct=change/prev*100
+    return {'symbol':symbol,'available':isinstance(price,(int,float)),'price':price,'change':change,'pct':pct,'currency':q.get('currency') or '','exchange':q.get('exchange') or 'Unavailable','session':q.get('session') or 'Unavailable','timestamp':q.get('timestamp'),'date':_quote_date(q),'source':q.get('source') or 'Unavailable','route':q.get('route') or 'verified','freshness':q.get('freshness') or _quote_freshness(q)}
+
 
 def _batch_quote_rows(symbols,max_workers=4):
-    symbols=list(dict.fromkeys(symbols or []))
+    symbols=list(dict.fromkeys(str(x).upper().strip() for x in (symbols or []) if x))
     if not symbols:return []
-    workers=max(1,min(max_workers,len(symbols)))
-    results={}
+    results={};workers=max(1,min(max_workers,len(symbols)))
     with futures.ThreadPoolExecutor(max_workers=workers) as ex:
         jobs={ex.submit(_compact_quote_row,s):s for s in symbols}
         for fut,sym in jobs.items():
             try:results[sym]=fut.result()
-            except Exception as e:
-                log.warning('Batch quote failed for %s: %s',sym,e);results[sym]={'symbol':sym,'available':False,'price':None,'change':None,'pct':None,'currency':'','exchange':'Unavailable','session':'Unavailable','timestamp':None,'date':'Unknown','source':'Unavailable','route':'error'}
+            except Exception as e:log.warning('Unified quote engine failed for %s: %s',sym,e);results[sym]={'symbol':sym,'available':False,'price':None,'change':None,'pct':None,'currency':'','exchange':'Unavailable','session':'Unavailable','timestamp':None,'date':'Unknown','source':'Unavailable','route':'error','freshness':'unavailable'}
     return [results[s] for s in symbols]
+
 
 def _html_escape(value):
     import html
@@ -563,7 +649,7 @@ def _format_market_table(query):
     if not rows:return f"💜 **{title}**\n\nNo symbols were available for this market table."
     result=MARKET_TABLE_CSS+_market_table_html(f'{title} — current market quotes',rows)
     result+=f"<div class='pf-market-table-note'>Requested: {len(rows)} · Verified: {verified} · Unavailable: {unavailable}. Failed symbols do not cancel the table.</div>"
-    result+="<div class='pf-market-table-note'>PSE provider order: StockAnalysis PSE → targeted PSE web evidence → Yahoo structured chart → generic web evidence. Other markets keep the structured provider path. Values are never guessed.</div>"
+    result+="<div class='pf-market-table-note'>Unified provider adapters select the best available market source, cross-check when possible, and fall back to a recent verified cache. Values are never guessed.</div>"
     return '<!--PF_MARKET_TABLE-->'+result
 
 
@@ -732,6 +818,8 @@ def _format_direct_quote(q):
         rows.append(('Trailing dividend yield',_percent_value(q.get('dividend_yield')) if q.get('dividend_yield') is not None else 'Unavailable'))
     rows.append(('Exchange',q.get('exchange') or 'Unavailable'))
     rows.append(('Currency',currency))
+    if q.get('route')=='cache': rows.append(('Cache age',f"{int(q.get('cache_age_seconds',0)//60)} min"))
+    if q.get('freshness'): rows.append(('Freshness',str(q.get('freshness')).upper()))
     lines=[f"💜 **{_md_cell(q.get('symbol') or 'Market')} market update**",'', '| Item | Value |','|---|---|']
     lines.extend(f"| {_md_cell(k)} | {_md_cell(v)} |" for k,v in rows)
     lines += ['',f"**Source:** {_md_cell(q.get('source') or 'Unavailable')}",q.get('source_url') or '',f"**Retrieved:** {_md_cell(q.get('observed_at') or 'Unavailable')}",'Market data can change quickly and may be delayed depending on exchange/source coverage. Use the session and quote timestamp above.']
@@ -777,11 +865,7 @@ def web_reply(message,call_ai=None,ai_failed_check=None,system_prompt=None,brain
         private_reply=_private_market_reply(query)
         if private_reply:return private_reply
         symbol=_symbol_from_query(query)
-        direct=None
-        if symbol and _pse_base_symbol(symbol):
-            direct=_stockanalysis_pse_quote(symbol) or _pse_quote_from_websearch(symbol) or _direct_yahoo_quote(symbol)
-        elif symbol:
-            direct=_direct_yahoo_quote(symbol)
+        direct=resolve_verified_quote(symbol) if symbol else None
         if direct:return _format_direct_quote(direct)
         sources=search_sources(intent_queries(query))
         if not sources:return "💜 I couldn't retrieve a current structured market quote or trustworthy market evidence right now. I won't guess a price."
@@ -825,6 +909,9 @@ def self_test():
     assert _symbol_from_query('0700.HK price now')=='0700.HK'
     assert _symbol_from_query('1155.KL stock')=='1155.KL'
     assert _symbol_from_query('BDO stock Philippines')=='BDO.PS'
+    assert _quote_consistent({'price':100},{'price':101})
+    assert not _quote_consistent({'price':100},{'price':120})
+    assert isinstance(_quote_providers('BDO.PS')[0],PSEDirectProvider)
     assert _symbol_from_query('BPI PSE price')=='BPI.PS'
     assert _symbol_from_query('Jollibee stock Philippines')=='JFC.PS'
     assert _symbol_from_query('Maynilad PSE stock')=='MYNLD.PS'
@@ -867,5 +954,5 @@ def self_test():
     dividend_text=_format_direct_quote(dividend_mock);assert '| Market cap | 15.00B USD |' in dividend_text and '| Trailing annual dividend | 2.5 USD / share |' in dividend_text and '| Trailing dividend yield | 3.50% |' in dividend_text
     return True
 
-__all__=['ENABLED','WEBSEARCH_AVAILABLE','SEARCH_AVAILABLE','web_reply','reply_is_unsure','search_sources','self_test','_extract_candidates','normalize_result','classify_web_intent','analyze_prompt','verify_evidence','grounded_synthesis_messages','_extract_market_quote','_direct_yahoo_quote','_format_direct_quote','_fetch_pse_catalog','_pse_symbol_from_query','_parse_pse_directory_html','_human_money','_percent_value','_dynamic_market_intent','_market_index_from_query','_local_market_region','_private_market_entity','_market_table_request','_market_table_symbols','_format_market_table','_global_region_from_query','_international_market_index','_GLOBAL_EXCHANGES']
+__all__=['ENABLED','WEBSEARCH_AVAILABLE','SEARCH_AVAILABLE','web_reply','reply_is_unsure','search_sources','self_test','_extract_candidates','normalize_result','classify_web_intent','analyze_prompt','verify_evidence','grounded_synthesis_messages','_extract_market_quote','_direct_yahoo_quote','_format_direct_quote','_fetch_pse_catalog','_pse_symbol_from_query','_parse_pse_directory_html','_human_money','_percent_value','_dynamic_market_intent','_market_index_from_query','_local_market_region','_private_market_entity','_market_table_request','_market_table_symbols','_format_market_table','_global_region_from_query','_international_market_index','_GLOBAL_EXCHANGES','resolve_verified_quote','_quote_consistent','_cached_quote','QuoteProvider']
 if __name__=='__main__':print('self_test:','PASS' if self_test() else 'FAIL')
