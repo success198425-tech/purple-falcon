@@ -5,7 +5,7 @@ from html import unescape
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 
-APP_NAME='Purple Falcon PH'; VERSION='15.5.0'
+APP_NAME='Purple Falcon PH'; VERSION='15.6.0'
 ENABLED=os.getenv('PF_WEBREASON','1').strip().lower() not in ('0','false','no','off')
 MEMORY_FILE=os.getenv('PF_MEMORY_FILE','purple_falcon_memory.json')
 MAX_RESULTS=10; MIN_SOURCES=2
@@ -110,27 +110,71 @@ _TIME_RE=re.compile(r'\b\d{1,2}:\d{2}(?::\d{2})?\s*(?:AM|PM)?\s*(?:EDT|EST|ET|UT
 _FINANCE_DOMAINS=('finance.yahoo.com','nasdaq.com','reuters.com','bloomberg.com','marketwatch.com','cnbc.com','investing.com','google.com')
 
 _LOCAL_MARKET_RE=re.compile(r'\b(?:local|domestic|home)\b.*\b(?:stock|stocks|market|shares?|index|update)\b|\b(?:stock|stocks|market|shares?|index)\b.*\b(?:local|domestic|home)\b',re.I)
-_PH_CONTEXT_RE=re.compile(r'\b(?:philippines|philippine|ph|pse|psei|manila|local)\b',re.I)
-_PH_MARKET_OVERVIEW_RE=re.compile(r'\b(?:local|philippines?|philippine|ph|pse|psei)\b.*\b(?:stock|stocks|market|shares?|index|update|today|now)\b|\b(?:stock|stocks|market|shares?|index)\b.*\b(?:philippines?|philippine|ph|pse|psei|local)\b',re.I)
-_INDEX_SYMBOLS={'PSEI.PS'}
+_MARKET_CONTEXTS={
+ 'MY':{'index':'^KLSE','currency':'MYR','aliases':('malaysia','malaysian','bursa','bursa malaysia','klse','fbm klci','klci','kuala lumpur')},
+ 'PH':{'index':'PSEI.PS','currency':'PHP','aliases':('philippines','philippine','pse','psei','manila')},
+ 'SG':{'index':'^STI','currency':'SGD','aliases':('singapore','sgx','sti','straits times')},
+ 'JP':{'index':'^N225','currency':'JPY','aliases':('japan','tokyo','nikkei','nikkei 225')},
+ 'HK':{'index':'^HSI','currency':'HKD','aliases':('hong kong','hkex','hang seng','hsi')},
+ 'AU':{'index':'^AXJO','currency':'AUD','aliases':('australia','asx','asx 200')},
+ 'IN':{'index':'^NSEI','currency':'INR','aliases':('india','nse','nifty','nifty 50')},
+ 'UK':{'index':'^FTSE','currency':'GBP','aliases':('united kingdom','uk','london','ftse','ftse 100')},
+ 'US':{'index':'^GSPC','currency':'USD','aliases':('united states','usa','us market','s&p 500','sp500')},
+}
+_INDEX_SYMBOLS={meta['index'] for meta in _MARKET_CONTEXTS.values()}
+_DEFAULT_LOCAL_MARKET=os.getenv('PF_LOCAL_MARKET','MY').strip().upper() or 'MY'
+
+def _explicit_market_region(query):
+    low=clean_query(query).lower()
+    for code,meta in _MARKET_CONTEXTS.items():
+        if any(re.search(r'(?<![a-z0-9])'+re.escape(a)+r'(?![a-z0-9])',low) for a in meta['aliases']):return code
+    return None
+
+def _local_market_region(query):
+    explicit=_explicit_market_region(query)
+    if explicit:return explicit
+    if _LOCAL_MARKET_RE.search(clean_query(query)):
+        return _DEFAULT_LOCAL_MARKET if _DEFAULT_LOCAL_MARKET in _MARKET_CONTEXTS else 'MY'
+    return None
 
 def _market_index_from_query(query):
     q=clean_query(query);low=q.lower()
-    # Explicit PSEi always wins. Generic local-market overview must not steal a named/bare PSE security.
-    if re.search(r'\bpsei\b',q,re.I):return 'PSEI.PS'
-    company_hints=('bdo','bpi','jollibee','ayala','acen','aboitiz','pldt','globe','meralco','ictsi','san miguel','puregold','metrobank','unionbank','maynilad')
+    # Named companies/tickers must beat broad local-market overview routing.
+    company_hints=('bdo','bpi','jollibee','ayala','acen','aboitiz','pldt','globe','meralco','ictsi','san miguel','puregold','metrobank','unionbank','maynilad','maybank','public bank','tenaga','cimb','maxis','petronas','airasia')
     if any(re.search(r'(?<![a-z0-9])'+re.escape(x)+r'(?![a-z0-9])',low) for x in company_hints):return None
-    if re.search(r'\b[A-Z][A-Z0-9]{1,9}\.PS\b',q):return None
-    if _PH_MARKET_OVERVIEW_RE.search(q):return 'PSEI.PS'
+    if re.search(r'\b[A-Z0-9]{1,12}(?:\.[A-Z]{1,4}|\^[A-Z0-9]+)\b',q):return None
+    region=_local_market_region(q)
+    if region:return _MARKET_CONTEXTS[region]['index']
     return None
 
-def _is_market_index(symbol):return (symbol or '').upper() in _INDEX_SYMBOLS
+def _is_market_index(symbol):return (symbol or '').upper() in {x.upper() for x in _INDEX_SYMBOLS}
 
 def _dynamic_market_intent(query):
-    q=clean_query(query)
-    if _market_index_from_query(q):return {'intent':'market','symbol':'PSEI.PS','kind':'index','region':'PH'}
-    if _MARKET_RE.search(q):return {'intent':'market','symbol':None,'kind':'security','region':'PH' if _PH_CONTEXT_RE.search(q) else None}
+    q=clean_query(query);idx=_market_index_from_query(q)
+    if idx:
+        region=next((code for code,m in _MARKET_CONTEXTS.items() if m['index']==idx),None)
+        return {'intent':'market','symbol':idx,'kind':'index','region':region}
+    if _MARKET_RE.search(q):
+        return {'intent':'market','symbol':None,'kind':'security','region':_explicit_market_region(q)}
     return None
+
+# Optional entity state for well-known private/unlisted names. This avoids treating a company name as a ticker.
+_PRIVATE_MARKET_ENTITIES={
+ 'gcash':{'company':'GCash / Mynt','region':'PH','kind':'private_or_unlisted'},
+ 'mynt':{'company':'Globe Fintech Innovations (Mynt)','region':'PH','kind':'private_or_unlisted'},
+}
+def _private_market_entity(query):
+    low=clean_query(query).lower()
+    for key,meta in _PRIVATE_MARKET_ENTITIES.items():
+        if re.search(r'(?<![a-z0-9])'+re.escape(key)+r'(?![a-z0-9])',low):return dict(meta,key=key)
+    return None
+
+def _private_market_reply(query):
+    ent=_private_market_entity(query)
+    if not ent:return None
+    return (f"💜 **{ent['company']} market check**\n\n"
+            "I could not resolve this name to a verified publicly traded ticker in the market resolver, so I won't invent a live share price.\n\n"
+            "I can research its current IPO/listing status, or you can ask for a related listed security or local market benchmark.")
 
 def classify_web_intent(q):
     if _dynamic_market_intent(q):return 'market'
@@ -292,12 +336,14 @@ def _resolve_international_alias(query):
 
 def _symbol_from_query(query):
     q=(query or '').strip(); low=q.lower()
-    index_symbol=_market_index_from_query(q)
-    if index_symbol:return index_symbol
+    if _private_market_entity(q):return None
+    # Explicit/named securities outrank broad regional market-overview routing.
     pse=_pse_symbol_from_query(q)
     if pse:return pse
     intl=_resolve_international_alias(q)
     if intl:return intl
+    index_symbol=_market_index_from_query(q)
+    if index_symbol:return index_symbol
     # Explicit Yahoo/exchange-qualified symbol such as 7203.T / 0700.HK / 1155.KL / ASML.AS.
     m=re.search(r'(?<![A-Za-z0-9])([A-Za-z0-9]{1,12}(?:\.[A-Za-z]{1,4}|-[A-Za-z]))\b',q)
     if m:
@@ -375,7 +421,7 @@ def _extract_market_quote(query,items):
 def _direct_yahoo_quote(symbol):
     """Direct structured quote provider. Returns only observed Yahoo chart metadata, never model-generated values."""
     symbol=(symbol or '').upper().strip()
-    if not re.fullmatch(r'[A-Z0-9.\-]{1,16}',symbol): return None
+    if not re.fullmatch(r'[A-Z0-9.^\-]{1,16}',symbol): return None
     url=f'https://query1.finance.yahoo.com/v8/finance/chart/{symbol}'
     try:
         r=requests.get(url,params={'interval':'1m','range':'1d','includePrePost':'true'},headers={'User-Agent':'Mozilla/5.0 PurpleFalcon/14.1'},timeout=8)
@@ -479,6 +525,8 @@ def web_reply(message,call_ai=None,ai_failed_check=None,system_prompt=None,brain
     if not policy['fresh'] and policy['intent']=='general':return None
     query=policy['query']
     if policy['intent']=='market':
+        private_reply=_private_market_reply(query)
+        if private_reply:return private_reply
         symbol=_symbol_from_query(query)
         direct=_direct_yahoo_quote(symbol) if symbol else None
         if direct:return _format_direct_quote(direct)
@@ -529,11 +577,22 @@ def self_test():
     assert _symbol_from_query('Maynilad PSE stock')=='MYNLD.PS'
     assert _symbol_from_query('ACEN PSE price now')=='ACEN.PS'
     assert _symbol_from_query('BDO.PS price')=='BDO.PS'
-    assert _symbol_from_query('local stock update today?')=='PSEI.PS'
+    # Dynamic local-market tests. Default local market is controlled by PF_LOCAL_MARKET.
+    expected_local=_MARKET_CONTEXTS.get(_DEFAULT_LOCAL_MARKET,_MARKET_CONTEXTS['MY'])['index']
+    assert _symbol_from_query('local stock update today?')==expected_local
     assert _symbol_from_query('what I mean Philippines stock update')=='PSEI.PS'
-    assert _symbol_from_query('how is the local market now')=='PSEI.PS'
+    assert _symbol_from_query('how is the local market now')==expected_local
     assert _symbol_from_query('PSEi today')=='PSEI.PS'
     assert _dynamic_market_intent('local stocks today')['kind']=='index'
+    assert _symbol_from_query('Malaysia stock update today')=='^KLSE'
+    assert _symbol_from_query('Philippines stock update')=='PSEI.PS'
+    assert _symbol_from_query('Singapore stock market today')=='^STI'
+    assert _symbol_from_query('Japan market update')=='^N225'
+    assert _symbol_from_query('Hong Kong market now')=='^HSI'
+    assert _symbol_from_query('Maybank stock Malaysia')=='1155.KL'
+    assert _symbol_from_query('BDO stock Philippines')=='BDO.PS'
+    assert _symbol_from_query('gcash stock now?') is None
+    assert _private_market_entity('gcash stock now?')['kind']=='private_or_unlisted'
     fixture='<table><tr><th>Company Name</th><th>Stock Symbol</th></tr><tr><td>Test Philippine Corp.</td><td>TPC</td></tr></table>'
     assert _parse_pse_directory_html(fixture).get('TPC')=='Test Philippine Corp.'
     assert _symbol_from_query('explain recursion') is None
@@ -543,5 +602,5 @@ def self_test():
     dividend_text=_format_direct_quote(dividend_mock);assert '| Market cap | 15.00B USD |' in dividend_text and '| Trailing annual dividend | 2.5 USD / share |' in dividend_text and '| Trailing dividend yield | 3.50% |' in dividend_text
     return True
 
-__all__=['ENABLED','WEBSEARCH_AVAILABLE','SEARCH_AVAILABLE','web_reply','reply_is_unsure','search_sources','self_test','_extract_candidates','normalize_result','classify_web_intent','analyze_prompt','verify_evidence','grounded_synthesis_messages','_extract_market_quote','_direct_yahoo_quote','_format_direct_quote','_fetch_pse_catalog','_pse_symbol_from_query','_parse_pse_directory_html','_human_money','_percent_value','_dynamic_market_intent','_market_index_from_query']
+__all__=['ENABLED','WEBSEARCH_AVAILABLE','SEARCH_AVAILABLE','web_reply','reply_is_unsure','search_sources','self_test','_extract_candidates','normalize_result','classify_web_intent','analyze_prompt','verify_evidence','grounded_synthesis_messages','_extract_market_quote','_direct_yahoo_quote','_format_direct_quote','_fetch_pse_catalog','_pse_symbol_from_query','_parse_pse_directory_html','_human_money','_percent_value','_dynamic_market_intent','_market_index_from_query','_local_market_region','_private_market_entity']
 if __name__=='__main__':print('self_test:','PASS' if self_test() else 'FAIL')
