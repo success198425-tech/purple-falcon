@@ -5,7 +5,7 @@ from html import unescape
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 
-APP_NAME='Purple Falcon PH'; VERSION='15.8.0'
+APP_NAME='Purple Falcon PH'; VERSION='16.0.0'
 ENABLED=os.getenv('PF_WEBREASON','1').strip().lower() not in ('0','false','no','off')
 MEMORY_FILE=os.getenv('PF_MEMORY_FILE','purple_falcon_memory.json')
 MAX_RESULTS=10; MIN_SOURCES=2
@@ -348,7 +348,51 @@ def _compact_quote_row(symbol):
     price=q.get('price');prev=q.get('previous_close');currency=q.get('currency') or ''
     change=(price-prev) if isinstance(price,(int,float)) and isinstance(prev,(int,float)) else None
     pct=(change/prev*100) if isinstance(change,(int,float)) and isinstance(prev,(int,float)) and prev else None
-    return {'symbol':symbol,'price':price,'change':change,'pct':pct,'currency':currency,'exchange':q.get('exchange') or 'Unavailable','session':q.get('session') or 'Unavailable','timestamp':q.get('timestamp')}
+    ts=q.get('timestamp')
+    quote_date=datetime.fromtimestamp(ts,timezone.utc).strftime('%Y-%m-%d') if isinstance(ts,(int,float)) else 'Unknown'
+    source=q.get('source') or 'Yahoo Finance structured quote'
+    return {'symbol':symbol,'price':price,'change':change,'pct':pct,'currency':currency,'exchange':q.get('exchange') or 'Unavailable','session':q.get('session') or 'Unavailable','timestamp':ts,'date':quote_date,'source':source}
+
+def _html_escape(value):
+    import html
+    return html.escape(str(value if value is not None else ''))
+
+def _change_html(row):
+    change=row.get('change');pct=row.get('pct')
+    if not isinstance(change,(int,float)) or not isinstance(pct,(int,float)):
+        return '<span class="pf-market-change pf-neutral">Unavailable</span>'
+    if change>0: cls,arrow='pf-up','▲'
+    elif change<0: cls,arrow='pf-down','▼'
+    else: cls,arrow='pf-neutral','•'
+    return f'<span class="pf-market-change {cls}">{arrow} {change:+.2f} ({pct:+.2f}%)</span>'
+
+def _session_html(session):
+    text=str(session or 'Unavailable');low=text.lower()
+    cls='pf-live' if any(x in low for x in ('regular','open','live')) else ('pf-delayed' if any(x in low for x in ('delay','recent','pre','after','overnight')) else 'pf-closed')
+    return f'<span class="pf-market-pill {cls}">{_html_escape(text)}</span>'
+
+def _market_table_html(title,rows):
+    body=[]
+    for r in rows:
+        price=f"{r['price']:.2f} {r['currency']}" if isinstance(r.get('price'),(int,float)) else 'Unavailable'
+        source=str(r.get('source') or 'Unavailable')
+        body.append('<tr>'+f'<td class="pf-symbol">{_html_escape(r.get("symbol"))}</td>'+f'<td class="pf-num">{_html_escape(price)}</td>'+f'<td class="pf-num">{_change_html(r)}</td>'+f'<td>{_session_html(r.get("session"))}</td>'+f'<td>{_html_escape(r.get("date","Unknown"))}</td>'+f'<td class="pf-source">{_html_escape(source)}</td>'+'</tr>')
+    return ('<div class="pf-market-table-card">'+f'<div class="pf-market-table-title">💜 {_html_escape(title)}</div>'+'<div class="pf-market-table-scroll"><table class="pf-market-table">'+'<thead><tr><th>Symbol</th><th>Price</th><th>Change</th><th>Session</th><th>Date</th><th>Source</th></tr></thead>'+'<tbody>'+''.join(body)+'</tbody></table></div></div>')
+
+MARKET_TABLE_CSS="""<style>
+.pf-market-table-card{border:1px solid rgba(127,127,127,.22);border-radius:14px;overflow:hidden;background:var(--pf-panel,#fff);margin:.55rem 0 1rem;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+.pf-market-table-title{font-weight:700;padding:12px 16px;border-bottom:1px solid rgba(127,127,127,.18)}
+.pf-market-table-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.pf-market-table{width:100%;border-collapse:separate;border-spacing:0;min-width:760px;font-size:.94rem}
+.pf-market-table th{padding:12px 16px;text-align:left;background:rgba(120,120,120,.07);font-weight:700;white-space:nowrap}
+.pf-market-table td{padding:12px 16px;border-top:1px solid rgba(127,127,127,.16);vertical-align:middle;white-space:nowrap}
+.pf-market-table th+th,.pf-market-table td+td{border-left:1px solid rgba(127,127,127,.12)}
+.pf-market-table .pf-symbol{font-weight:700}.pf-market-table .pf-num{font-variant-numeric:tabular-nums}.pf-source{max-width:220px;overflow:hidden;text-overflow:ellipsis}
+.pf-market-change.pf-up{color:#16803c;font-weight:700}.pf-market-change.pf-down{color:#c43131;font-weight:700}.pf-market-change.pf-neutral{color:#6b7280}
+.pf-market-pill{display:inline-flex;padding:3px 8px;border-radius:999px;font-size:.78rem;font-weight:700}.pf-live{background:#dcfce7;color:#166534}.pf-delayed{background:#fef3c7;color:#92400e}.pf-closed{background:#eef2f7;color:#475569}
+.pf-market-table-note{font-size:.78rem;opacity:.72;margin:.25rem .15rem .5rem}
+@media(max-width:640px){.pf-market-table-card{border-radius:12px}.pf-market-table{font-size:.88rem}.pf-market-table th,.pf-market-table td{padding:10px 12px}}
+</style>"""
 
 def _format_market_table(query):
     req=_market_table_request(query) or {};region=req.get('region') or _DEFAULT_LOCAL_MARKET
@@ -358,16 +402,13 @@ def _format_market_table(query):
         if row:rows.append(row)
     title='Philippine local stocks' if region=='PH' else ('Malaysia local stocks' if region=='MY' else f'{region} local stocks')
     if not rows:return f"💜 **{title}**\n\nI couldn't verify enough structured quotes to build the requested local-stock table right now."
-    out=[f"💜 **{title} — current structured quotes**",'', '| Symbol | Price | Change | Session |','|---|---:|---:|---|']
-    for r in rows:
-        price=f"{r['price']:.2f} {r['currency']}" if isinstance(r['price'],(int,float)) else 'Unavailable'
-        change=f"{r['change']:+.2f} ({r['pct']:+.2f}%)" if isinstance(r['change'],(int,float)) and isinstance(r['pct'],(int,float)) else 'Unavailable'
-        out.append(f"| {r['symbol']} | {price} | {change} | {r['session']} |")
+    result=MARKET_TABLE_CSS+_market_table_html(f'{title} — current structured quotes',rows)
     times=[r.get('timestamp') for r in rows if isinstance(r.get('timestamp'),(int,float))]
     if times:
-        out += ['',f"Latest quote timestamp in table: {datetime.fromtimestamp(max(times)).isoformat(sep=' ',timespec='seconds')}"]
-    out += ['', 'Values come from structured market quotes. Missing counters are skipped rather than guessed.']
-    return '\n'.join(out)
+        result+=f"<div class='pf-market-table-note'>Latest quote timestamp: {_html_escape(datetime.fromtimestamp(max(times),timezone.utc).isoformat(sep=' ',timespec='seconds'))} UTC</div>"
+    result+="<div class='pf-market-table-note'>Values come from structured market quotes. Missing counters are skipped rather than guessed.</div>"
+    return result
+
 
 def _normalize_symbol(symbol):
     value=(symbol or '').strip().upper().replace(' ', '')
@@ -639,6 +680,7 @@ def self_test():
     assert _dynamic_market_intent('can you tabulate result for other local stocks at PH?')['intent']=='market_table'
     assert _market_table_symbols('tabulate local stocks PH',3)==['BDO.PS','BPI.PS','JFC.PS']
     assert _market_table_symbols('compare local stocks Malaysia',2)==['1155.KL','1295.KL']
+    assert all(x in _market_table_html('Test',[]) for x in ('Symbol','Price','Change','Session','Date','Source'))
     assert _symbol_from_query('Malaysia stock update today')=='^KLSE'
     assert _symbol_from_query('Philippines stock update')=='PSEI.PS'
     assert _symbol_from_query('Singapore stock market today')=='^STI'
