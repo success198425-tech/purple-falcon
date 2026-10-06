@@ -2,7 +2,7 @@
 
 
 # ==================================================
-# 💜 PURPLE FALCON PH v6.10.3 — LIVE SKILLS + SELF-LEARNING + FILE ANALYST + NEWS + LOGO + IMAGE/VIDEO 🇵🇭
+# 💜 PURPLE FALCON PH v6.10.4 — LIVE SKILLS + SELF-LEARNING + FILE ANALYST + NEWS + LOGO + IMAGE/VIDEO 🇵🇭
 # ==================================================
 #   ✅ Live skills that learn: weather, exchange rates, world clock, Wikipedia, web search, web pages, earthquakes, dictionary,
 #      country facts, calculator — used whenever the AI model can't answer or is unreachable (falcon_skills.py)
@@ -284,7 +284,7 @@ except Exception as e:
     localbrain, LOCAL_BRAIN_STATUS = None, f"⚠️ falcon_reasoning unavailable ({e.__class__.__name__})"
 
 print("=" * 60)
-print("💜 PURPLE FALCON PH v6.10.3 — PROTECTED 🇵🇭")
+print("💜 PURPLE FALCON PH v6.10.4 — PROTECTED 🇵🇭")
 if ENV_PATH:
     print(f"   .env file:     {'✅' if not ENV_PROBLEMS else '⚠️'} {ENV_LOADED} setting(s) read")
     for _p in ENV_PROBLEMS: print(f"                  ↳ {_p}")
@@ -376,7 +376,7 @@ def build_status_bar_html():
              ("Database", "Not Connected", False)]
     parts = "".join(f'<div class="pf-status-item{" ok" if ok else ""}"><span class="dot"></span><span>{name}: {state}</span></div>'
                     for name, state, ok in items)
-    return parts + '<div class="pf-status-item"><span>Purple Falcon AI v6.10.3</span></div>'
+    return parts + '<div class="pf-status-item"><span>Purple Falcon AI v6.10.4</span></div>'
 
 def build_sidebar_nav_html():
     soon = lambda icon, label: (f'<div class="pf-nav-item disabled"><span>{icon}</span>'
@@ -442,7 +442,7 @@ except Exception as _e:
     print(f"⚠️ Couldn't prepare chat avatar: {_e}")
 
 # ==================================================
-# SETTINGS LOCALIZATION v6.10.3
+# SETTINGS LOCALIZATION v6.10.4
 # ==================================================
 SETTINGS_LANGUAGES=[('English','en'),('Filipino / Tagalog','tl'),('Cebuano / Bisaya','ceb'),('Malay','ms'),('Indonesian','id'),('Spanish','es'),('French','fr'),('German','de'),('Portuguese','pt'),('Italian','it'),('Japanese / 日本語','ja'),('Korean / 한국어','ko')]
 SETTINGS_I18N={
@@ -472,7 +472,7 @@ UI_I18N={
 'it':{'new_chat':'Nuova Chat','workspace':'Area di lavoro','recent':'Recenti','soon':'Prossimamente','copy':'Copia','read':'Leggi ad alta voce','helpful':'Utile','not_helpful':'Non utile','insights':'Approfondimenti AI','run':'Esegui','running':'Esecuzione…','ready':'Pronto','offline':'Offline','not_connected':'Non connesso','knowledge':'Base di conoscenza','database':'Database','tools':'Strumenti','attach':'Allega file','clear':'Cancella','send':'Invia','stop':'Ferma','download':'Scarica','save':'Salva','reset':'Reimposta','close':'Chiudi','processing':'Elaborazione','uploading':'Caricamento','analyzing':'Analisi','generating':'Generazione','verifying':'Verifica'},
 'ja':{'new_chat':'新しいチャット','workspace':'ワークスペース','recent':'最近','soon':'近日公開','copy':'コピー','read':'読み上げ','helpful':'役に立った','not_helpful':'役に立たなかった','insights':'AI インサイト','run':'実行','running':'実行中…','ready':'準備完了','offline':'オフライン','not_connected':'未接続','knowledge':'ナレッジベース','database':'データベース','tools':'ツール','attach':'ファイルを添付','clear':'クリア','send':'送信','stop':'停止','download':'ダウンロード','save':'保存','reset':'リセット','close':'閉じる','processing':'処理中','uploading':'アップロード中','analyzing':'分析中','generating':'生成中','verifying':'確認中'},
 'ko':{'new_chat':'새 채팅','workspace':'작업 공간','recent':'최근','soon':'곧 제공','copy':'복사','read':'소리내어 읽기','helpful':'도움됨','not_helpful':'도움 안 됨','insights':'AI 인사이트','run':'실행','running':'실행 중…','ready':'준비됨','offline':'오프라인','not_connected':'연결 안 됨','knowledge':'지식 베이스','database':'데이터베이스','tools':'도구','attach':'파일 첨부','clear':'지우기','send':'보내기','stop':'중지','download':'다운로드','save':'저장','reset':'재설정','close':'닫기','processing':'처리 중','uploading':'업로드 중','analyzing':'분석 중','generating':'생성 중','verifying':'확인 중'}}
-# v6.10.3 dark-mode accessibility checks
+# v6.10.4 dark-mode accessibility checks
 # WCAG-style relative luminance / contrast helpers for deterministic theme checks.
 def _a11y_hex_rgb(value):
     v=str(value or '').strip().lstrip('#')
@@ -552,6 +552,25 @@ def run_native_copy_paste_checks():
     failures=[k for k,v in required.items() if not v]
     return {'passed':not failures,'failures':failures,'checks':required,'count':len(required)}
 
+def run_image_clipboard_paste_checks():
+    source=globals().get('__file__','')
+    try: text=open(source,'r',encoding='utf-8').read() if source else ''
+    except Exception: text=''
+    required={
+      'clipboard_image_extractor':'function pfClipboardImageFiles(e)' in text,
+      'files_fallback':'cd.files' in text,
+      'multi_selector_upload':'function pfFindUploadInput()' in text and '[data-testid="upload-button"] input[type="file"]' in text,
+      'nearest_input_fallback':'getBoundingClientRect()' in text,
+      'data_transfer':'var dt=new DataTransfer()' in text,
+      'preserve_existing':'Array.from(input.files || [])' in text,
+      'input_event':"new Event('input',{bubbles:true})" in text,
+      'change_event':"new Event('change',{bubbles:true})" in text,
+      'image_only_prevent_default':'if(!files.length) return; // native text paste remains untouched' in text,
+      'capture_paste':"},true);" in text,
+    }
+    failures=[k for k,v in required.items() if not v]
+    return {'passed':not failures,'failures':failures,'checks':required,'count':len(required)}
+
 def run_keyboard_navigation_checks():
     """Static regression for keyboard-only navigation of the Settings dialog."""
     source=globals().get('__file__','')
@@ -610,7 +629,7 @@ def localized_system_status_html(lang='en'):
 def localized_settings_html(lang='en'):
     x=SETTINGS_I18N.get(lang,SETTINGS_I18N['en']);return f'<div class="pf-settings-title" role="heading" aria-level="2">{x[0]}</div><div class="pf-settings-group-title">{x[2]}</div>'
 def localized_settings_detail_html(lang='en'):
-    x=SETTINGS_I18N.get(lang,SETTINGS_I18N['en']);status=x[7] if AI_CONFIGURED else x[8];on='On' if RUN_CODE_ENABLED else 'Off';return f'<div class="pf-settings-group-title">{x[4]}</div><div style="font-size:.78rem;color:var(--pf-text2)">🎤</div><div class="pf-settings-group-title">{x[5]}</div><div style="font-size:.78rem;color:var(--pf-text2);line-height:1.6">Purple Falcon AI v6.10.3<br>{x[6]}: {on}</div>'
+    x=SETTINGS_I18N.get(lang,SETTINGS_I18N['en']);status=x[7] if AI_CONFIGURED else x[8];on='On' if RUN_CODE_ENABLED else 'Off';return f'<div class="pf-settings-group-title">{x[4]}</div><div style="font-size:.78rem;color:var(--pf-text2)">🎤</div><div class="pf-settings-group-title">{x[5]}</div><div style="font-size:.78rem;color:var(--pf-text2);line-height:1.6">Purple Falcon AI v6.10.4<br>{x[6]}: {on}</div>'
 
 
 def localized_action_updates(lang='en'):
@@ -1070,7 +1089,7 @@ body.pf-tools-open #pf-tools-link { background: var(--pf-bg3) !important; color:
 .pf-status-item .dot { width: 6px; height: 6px; border-radius: 50%; background: #6b7280; flex: 0 0 auto; }
 .pf-status-item.ok .dot { background: #22c55e; }
 
-/* ---------- v6.10.3 unified rounded + fluid responsive shell ---------- */
+/* ---------- v6.10.4 unified rounded + fluid responsive shell ---------- */
 :root {
     --pf-radius-xs: clamp(8px, .55vw, 12px);
     --pf-radius-sm: clamp(12px, .8vw, 16px);
@@ -1139,7 +1158,7 @@ body.pf-tools-open #pf-tools-link { background: var(--pf-bg3) !important; color:
     #pf-app-shell { width: min(calc(100% - 32px), 1760px); }
     #pf-chat-scroll, #pf-composer-area { padding-inline: clamp(1.25rem, 2vw, 2.25rem) !important; }
 }
-/* ---------- v6.10.3 fluid spacing system ---------- */
+/* ---------- v6.10.4 fluid spacing system ---------- */
 :root {
     --pf-space-1: clamp(4px, .28vw, 6px);
     --pf-space-2: clamp(6px, .42vw, 9px);
@@ -1207,12 +1226,12 @@ body.pf-tools-open #pf-tools-link { background: var(--pf-bg3) !important; color:
 @media (min-width: 1600px) {
     :root { --pf-content-pad-x: clamp(1.4rem, 1.8vw, 2.3rem); --pf-section-gap: clamp(1rem, 1.15vw, 1.5rem); }
 }
-/* v6.10.3 theme selector + settings overflow hardening */
+/* v6.10.4 theme selector + settings overflow hardening */
 #pf-settings-panel { overflow-x: hidden !important; }
 #pf-settings-panel > *, #pf-settings-panel .form, #pf-settings-panel .wrap { max-width: 100% !important; min-width: 0 !important; }
 #pf-theme, #pf-settings-language { width: 100% !important; max-width: 100% !important; min-width: 0 !important; }
 #pf-theme .wrap, #pf-settings-language .wrap { overflow: visible !important; }
-/* ---------- v6.10.3 fullscreen shell + all-device settings select fix ---------- */
+/* ---------- v6.10.4 fullscreen shell + all-device settings select fix ---------- */
 html, body, gradio-app, .gradio-container {
     width: 100% !important; max-width: none !important;
     height: 100vh !important; height: 100svh !important; height: 100dvh !important;
@@ -1327,7 +1346,7 @@ body > [role="listbox"] {
     body.pf-sidebar-collapsed .pf-nav-label, body.pf-sidebar-collapsed .pf-nav-section-title, body.pf-sidebar-collapsed .pf-recent-list { display: block !important; }
 }
 @media (max-width: 640px) {
-    /* v6.10.3: touch-friendly bottom sheet plus explicit dark-theme mobile treatment */
+    /* v6.10.4: touch-friendly bottom sheet plus explicit dark-theme mobile treatment */
     #pf-settings-overlay { background: rgba(0,0,0,.52); backdrop-filter: blur(2px); }
     #pf-settings-panel {
         top: auto; right: 0; bottom: 0; left: 0;
@@ -1370,7 +1389,7 @@ body > [role="listbox"] {
     #pf-workspace-header { padding-left: .75rem !important; padding-right: .75rem !important; }
     #pf-status-bar { gap: .6rem !important; font-size: .64rem; flex-wrap: nowrap; overflow-x: auto; justify-content: flex-start !important; padding: 0 .6rem; }
 }
-/* v6.10.3 dark-mode mobile settings */
+/* v6.10.4 dark-mode mobile settings */
 @media (max-width: 640px) {
     :root[data-pf-theme="purple"], :root[data-pf-theme="sunset"], :root[data-pf-theme="ocean"], :root[data-pf-theme="emerald"] { color-scheme: dark; }
     :root[data-pf-theme="purple"] #pf-settings-panel, :root[data-pf-theme="sunset"] #pf-settings-panel, :root[data-pf-theme="ocean"] #pf-settings-panel, :root[data-pf-theme="emerald"] #pf-settings-panel {
@@ -1387,7 +1406,7 @@ body > [role="listbox"] {
     :root[data-pf-theme="purple"] #pf-settings-close, :root[data-pf-theme="sunset"] #pf-settings-close, :root[data-pf-theme="ocean"] #pf-settings-close, :root[data-pf-theme="emerald"] #pf-settings-close { color:var(--pf-text) !important; background:color-mix(in srgb,var(--pf-bg3) 86%,transparent) !important; border-radius:10px !important; }
     :root[data-pf-theme="purple"] #pf-settings-close:hover, :root[data-pf-theme="sunset"] #pf-settings-close:hover, :root[data-pf-theme="ocean"] #pf-settings-close:hover, :root[data-pf-theme="emerald"] #pf-settings-close:hover { background:color-mix(in srgb,var(--pf-accent) 24%,var(--pf-bg3)) !important; }
 }
-/* v6.10.3 accessibility additions for mobile dark settings */
+/* v6.10.4 accessibility additions for mobile dark settings */
 @media (max-width: 640px) {
     #pf-settings-panel button:focus-visible,
     #pf-settings-panel input:focus-visible,
@@ -1424,7 +1443,7 @@ body > [role="listbox"] {
     #pf-composer-links { margin-top: .15rem !important; }
     .pf-welcome { padding-top: .75rem; padding-bottom: .75rem; }
 }
-/* v6.10.3 final safe layout overrides */
+/* v6.10.4 final safe layout overrides */
 html,body,gradio-app,.gradio-container { width:100% !important; max-width:none !important; margin:0 !important; padding:0 !important; border-radius:0 !important; }
 .gradio-container { height:100dvh !important; min-height:100dvh !important; overflow:hidden !important; }
 #pf-app-shell { width:100% !important; max-width:none !important; height:100dvh !important; margin:0 !important; border:0 !important; border-radius:0 !important; box-shadow:none !important; }
@@ -1441,8 +1460,8 @@ html,body,gradio-app,.gradio-container { width:100% !important; max-width:none !
 #pf-settings-panel [role="listbox"],.gradio-container [role="listbox"],body > [role="listbox"] { z-index:10050 !important; pointer-events:auto !important; }
 @media (max-width:640px) and (orientation:portrait){#pf-settings-panel{top:auto !important;left:0 !important;right:0 !important;bottom:0 !important;width:100vw !important;max-width:100vw !important;height:min(88dvh,760px) !important;max-height:88dvh !important;transform:translateY(105%) !important;border-radius:20px 20px 0 0 !important}#pf-settings-panel.pf-open{transform:translateY(0) !important}}
 @media (orientation:landscape) and (max-height:700px) and (max-width:1180px){#pf-settings-panel{top:0 !important;left:auto !important;right:0 !important;bottom:0 !important;width:min(440px,92vw) !important;max-width:92vw !important;height:100dvh !important;max-height:100dvh !important;transform:translateX(105%) !important;border-radius:16px 0 0 16px !important}#pf-settings-panel.pf-open{transform:translateX(0) !important}}
-\n/* v6.10.3 Copilot-style composer, centered in chat column */\n#pf-main{position:relative !important}\n#pf-chat-scroll{padding-bottom:120px !important}\n#pf-composer-area{position:absolute !important;left:0 !important;right:0 !important;bottom:0 !important;z-index:35 !important;border-top:0 !important;background:linear-gradient(to bottom,transparent,var(--pf-bg) 35%) !important;max-height:none !important;overflow:visible !important}\n#pf-inputbar{width:min(980px,calc(100% - 2 * var(--pf-content-pad-x))) !important;max-width:980px !important;margin-left:auto !important;margin-right:auto !important;min-height:76px !important;border-radius:28px !important}\n@media(max-width:640px){#pf-chat-scroll{padding-bottom:98px !important}#pf-inputbar{width:calc(100% - 2 * var(--pf-content-pad-x)) !important;min-height:62px !important;border-radius:24px !important}}\n
-/* v6.10.3 definitive edge-to-edge viewport + tiny AI disclaimer */
+\n/* v6.10.4 Copilot-style composer, centered in chat column */\n#pf-main{position:relative !important}\n#pf-chat-scroll{padding-bottom:120px !important}\n#pf-composer-area{position:absolute !important;left:0 !important;right:0 !important;bottom:0 !important;z-index:35 !important;border-top:0 !important;background:linear-gradient(to bottom,transparent,var(--pf-bg) 35%) !important;max-height:none !important;overflow:visible !important}\n#pf-inputbar{width:min(980px,calc(100% - 2 * var(--pf-content-pad-x))) !important;max-width:980px !important;margin-left:auto !important;margin-right:auto !important;min-height:76px !important;border-radius:28px !important}\n@media(max-width:640px){#pf-chat-scroll{padding-bottom:98px !important}#pf-inputbar{width:calc(100% - 2 * var(--pf-content-pad-x)) !important;min-height:62px !important;border-radius:24px !important}}\n
+/* v6.10.4 definitive edge-to-edge viewport + tiny AI disclaimer */
 html, body, gradio-app, .gradio-container,
 .gradio-container > .main, .gradio-container > .wrap,
 .gradio-container .contain, #root, #root > div {
@@ -1667,30 +1686,74 @@ document.addEventListener('DOMContentLoaded', function(){
 
 # ---------- paste an image straight into the message box ----------
 _PASTE_JS = """
-document.addEventListener('paste', function(e){
-    var cd = e.clipboardData || window.clipboardData;
-    if (!cd || !cd.items) return;
-    var imgFiles = [];
-    for (var i=0; i<cd.items.length; i++){
-        var it = cd.items[i];
-        if (it.kind === 'file' && it.type && it.type.indexOf('image') === 0){
-            var f = it.getAsFile();
-            if (f) imgFiles.push(f);
+function pfClipboardImageFiles(e){
+    var cd=e.clipboardData || window.clipboardData;
+    if(!cd) return [];
+    var out=[];
+    if(cd.items){
+        for(var i=0;i<cd.items.length;i++){
+            var it=cd.items[i];
+            if(it && it.kind==='file' && /^image\//i.test(it.type || '')){
+                var f=it.getAsFile(); if(f) out.push(f);
+            }
         }
     }
-    if (!imgFiles.length) return;   // no image on the clipboard — let normal text paste happen untouched
-    var plusInput = document.querySelector('#pf-plus input[type="file"]');
-    if (!plusInput){ console.warn('Purple Falcon: could not find the upload input to paste into'); return; }
-    var dt = new DataTransfer();
-    imgFiles.forEach(function(f, idx){
-        var ext = (f.type && f.type.indexOf('png') > -1) ? 'png' : (f.type && f.type.indexOf('gif') > -1) ? 'gif' : 'jpg';
-        dt.items.add(new File([f], 'pasted-image-' + (idx + 1) + '.' + ext, {type: f.type || 'image/png'}));
-    });
-    plusInput.files = dt.files;
-    plusInput.dispatchEvent(new Event('change', {bubbles: true}));
-    plusInput.dispatchEvent(new Event('input', {bubbles: true}));
-    e.preventDefault();
-});
+    if(!out.length && cd.files){
+        for(var j=0;j<cd.files.length;j++) if(/^image\//i.test(cd.files[j].type || '')) out.push(cd.files[j]);
+    }
+    return out;
+}
+function pfFindUploadInput(){
+    var selectors=[
+      '#pf-plus input[type="file"]',
+      '#pf-plus + input[type="file"]',
+      '#pf-inputbar input[type="file"]',
+      '[data-testid="upload-button"] input[type="file"]',
+      'input[type="file"][multiple]'
+    ];
+    for(var i=0;i<selectors.length;i++){
+        var el=document.querySelector(selectors[i]); if(el) return el;
+    }
+    var all=Array.from(document.querySelectorAll('input[type="file"]'));
+    if(all.length===1) return all[0];
+    var plus=document.getElementById('pf-plus');
+    if(plus && all.length){
+        var pr=plus.getBoundingClientRect(), best=null, dist=Infinity;
+        all.forEach(function(el){
+            var r=el.getBoundingClientRect();
+            var d=Math.abs(r.left-pr.left)+Math.abs(r.top-pr.top);
+            if(d<dist){dist=d;best=el;}
+        });
+        if(best) return best;
+    }
+    return all[0] || null;
+}
+function pfPasteImages(files,e){
+    var input=pfFindUploadInput();
+    if(!input){ console.warn('Purple Falcon image paste: Gradio file input not found'); return false; }
+    try{
+        var dt=new DataTransfer();
+        Array.from(input.files || []).forEach(function(f){dt.items.add(f);});
+        files.forEach(function(f,idx){
+            var type=f.type || 'image/png';
+            var ext=type.indexOf('png')>=0?'png':type.indexOf('gif')>=0?'gif':type.indexOf('webp')>=0?'webp':'jpg';
+            var name=(f.name && f.name.indexOf('.')>0) ? f.name : ('pasted-image-'+Date.now()+'-'+(idx+1)+'.'+ext);
+            dt.items.add(new File([f],name,{type:type,lastModified:Date.now()}));
+        });
+        input.files=dt.files;
+        input.dispatchEvent(new Event('input',{bubbles:true}));
+        input.dispatchEvent(new Event('change',{bubbles:true}));
+        if(e) e.preventDefault();
+        var ta=document.querySelector('#pf-msg textarea, #pf-msg input'); if(ta) ta.focus();
+        console.info('Purple Falcon image paste: attached '+files.length+' image(s)');
+        return true;
+    }catch(err){ console.warn('Purple Falcon image paste failed:',err); return false; }
+}
+document.addEventListener('paste',function(e){
+    var files=pfClipboardImageFiles(e);
+    if(!files.length) return; // native text paste remains untouched
+    pfPasteImages(files,e);
+},true);
 """
 
 # ---------- app shell: sidebar collapse/mobile drawer, settings drawer, response actions ----------
@@ -5054,7 +5117,7 @@ def apply_confidentiality_guard(reply):
         return confidential_falcon_reply()
     return text
 
-# ---- v6.10.3 public meta conversation regression tests ----
+# ---- v6.10.4 public meta conversation regression tests ----
 _PUBLIC_META_TRUE_CASES=[
 'pano ka ba kumukuha ng information?','paano ka kumukuha ng impormasyon?','how do you get information?','where do you get information?',
 'pano ka naghahanap ng info?','paano ka naghahanap ng data?','saan galing ang information mo?','saan ka kumukuha ng datos?',
