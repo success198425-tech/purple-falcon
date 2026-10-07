@@ -5,7 +5,7 @@ from html import unescape
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 
-APP_NAME='Purple Falcon PH'; VERSION='17.1.2'
+APP_NAME='Purple Falcon PH'; VERSION='17.1.3'
 ENABLED=os.getenv('PF_WEBREASON','1').strip().lower() not in ('0','false','no','off')
 MEMORY_FILE=os.getenv('PF_MEMORY_FILE','purple_falcon_memory.json')
 MAX_RESULTS=10; MIN_SOURCES=2
@@ -505,24 +505,24 @@ def _market_table_html(title,rows):
     return '<div class="pf-market-table-card">'+f'<div class="pf-market-table-title">💜 {_html_escape(title)}</div>'+'<div class="pf-market-table-scroll"><table class="pf-market-table"><thead><tr><th>Symbol</th><th>Price</th><th>Change</th><th>Session</th><th>Date</th><th>Source</th></tr></thead><tbody>'+''.join(body)+'</tbody></table></div></div>'
 
 MARKET_TABLE_CSS="""<style>
-.pf-market-table-card{border:1px solid #cbd5e1;border-radius:16px;overflow:hidden;background:#ffffff;color:#172033;margin:.65rem 0 1rem;box-shadow:0 4px 14px rgba(15,23,42,.12)}
-.pf-market-table-title{font-size:15px;line-height:1.35;font-weight:850;color:#101828;padding:14px 16px;border-bottom:1px solid #d0d5dd;background:#f8fafc;letter-spacing:.01em}
-.pf-market-table-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-color:#64748b #e2e8f0;scrollbar-width:auto}
-.pf-market-table-scroll::-webkit-scrollbar{height:12px}.pf-market-table-scroll::-webkit-scrollbar-track{background:#e2e8f0}.pf-market-table-scroll::-webkit-scrollbar-thumb{background:#64748b;border-radius:999px;border:2px solid #e2e8f0}
-.pf-market-table{width:100%;min-width:900px;border-collapse:separate;border-spacing:0;font-size:14px;line-height:1.35;color:#172033;background:#fff;table-layout:auto}
-.pf-market-table th{padding:13px 14px;text-align:left;background:#e7eff8;color:#1d2939;font-size:13px;font-weight:800;white-space:nowrap;border-bottom:2px solid #cbd5e1}
-.pf-market-table td{padding:12px 14px;border-top:1px solid #cbd5e1;color:#172033;vertical-align:middle;white-space:nowrap;background:#fff}
-.pf-market-table tbody tr:nth-child(even) td{background:#f8fbff}.pf-market-table tbody tr:hover td{background:#eef6ff}
-.pf-market-table td+td,.pf-market-table th+th{border-left:1px solid #cbd5e1}
-.pf-market-table .pf-symbol{font-weight:800;color:#101828;position:sticky;left:0;z-index:2;min-width:88px;background:#fff;box-shadow:2px 0 0 #dbe2ea}
-.pf-market-table tbody tr:nth-child(even) .pf-symbol{background:#f8fbff}.pf-market-table tbody tr:hover .pf-symbol{background:#eef6ff}.pf-market-table th:first-child{position:sticky;left:0;z-index:3;background:#e9f1fb;box-shadow:2px 0 0 #cbd5e1}
-.pf-market-table .pf-num{font-variant-numeric:tabular-nums}.pf-market-table .pf-price{color:#344054;font-weight:700}.pf-market-table .pf-date{color:#344054;font-weight:650}.pf-market-table .pf-source{min-width:170px;max-width:240px;overflow:hidden;text-overflow:ellipsis;color:#475467;font-weight:650}.pf-market-table td.pf-price,.pf-market-table td.pf-date,.pf-market-table td.pf-source{opacity:1}.pf-market-table td.pf-price:where(:not(:empty)){text-shadow:0 0 0 currentColor}
-.pf-market-change.pf-up,.pf-up{color:#067647;font-weight:800}.pf-market-change.pf-down,.pf-down{color:#b42318;font-weight:800}.pf-market-change.pf-neutral,.pf-neutral{color:#344054;font-weight:750}
+.pf-market-table-card{border:1px solid var(--pf-mkt-border,#cbd5e1);border-radius:16px;overflow:hidden;background:var(--pf-mkt-bg,#fff);color:var(--pf-mkt-text,#172033);margin:.65rem 0 1rem;box-shadow:0 4px 14px var(--pf-mkt-shadow,rgba(15,23,42,.12))}
+.pf-market-table-title{font-size:15px;line-height:1.35;font-weight:850;color:var(--pf-mkt-title,#101828);padding:14px 16px;border-bottom:1px solid var(--pf-mkt-border,#cbd5e1);background:var(--pf-mkt-title-bg,#f8fafc);letter-spacing:.01em}
+.pf-market-table-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-color:var(--pf-mkt-scroll-thumb,#64748b) var(--pf-mkt-scroll-track,#e2e8f0);scrollbar-width:auto}
+.pf-market-table-scroll::-webkit-scrollbar{height:12px}.pf-market-table-scroll::-webkit-scrollbar-track{background:var(--pf-mkt-scroll-track,#e2e8f0)}.pf-market-table-scroll::-webkit-scrollbar-thumb{background:var(--pf-mkt-scroll-thumb,#64748b);border-radius:999px;border:2px solid var(--pf-mkt-scroll-track,#e2e8f0)}
+.pf-market-table{width:100%;min-width:900px;border-collapse:separate;border-spacing:0;font-size:14px;line-height:1.35;color:var(--pf-mkt-text,#172033);background:var(--pf-mkt-bg,#fff);table-layout:auto}
+.pf-market-table th{padding:13px 14px;text-align:left;background:var(--pf-mkt-header,#e7eff8);color:var(--pf-mkt-header-text,#1d2939);font-size:13px;font-weight:800;white-space:nowrap;border-bottom:2px solid var(--pf-mkt-border-strong,#94a3b8)}
+.pf-market-table td{padding:12px 14px;border-top:1px solid var(--pf-mkt-border,#cbd5e1);color:var(--pf-mkt-text,#172033);vertical-align:middle;white-space:nowrap;background:var(--pf-mkt-row,#fff)}
+.pf-market-table tbody tr:nth-child(even) td{background:var(--pf-mkt-row-alt,#f8fbff)}.pf-market-table tbody tr:hover td{background:var(--pf-mkt-hover,#eef6ff)}
+.pf-market-table td+td,.pf-market-table th+th{border-left:1px solid var(--pf-mkt-border,#cbd5e1)}
+.pf-market-table .pf-symbol{font-weight:800;color:var(--pf-mkt-symbol,#101828);position:sticky;left:0;z-index:2;min-width:88px;background:var(--pf-mkt-row,#fff);box-shadow:2px 0 0 var(--pf-mkt-border,#cbd5e1)}
+.pf-market-table tbody tr:nth-child(even) .pf-symbol{background:var(--pf-mkt-row-alt,#f8fbff)}.pf-market-table tbody tr:hover .pf-symbol{background:var(--pf-mkt-hover,#eef6ff)}.pf-market-table th:first-child{position:sticky;left:0;z-index:3;background:var(--pf-mkt-header,#e7eff8);box-shadow:2px 0 0 var(--pf-mkt-border-strong,#94a3b8)}
+.pf-market-table .pf-num{font-variant-numeric:tabular-nums}.pf-market-table .pf-price{color:var(--pf-mkt-price,#344054);font-weight:700}.pf-market-table .pf-date{color:var(--pf-mkt-date,#344054);font-weight:650}.pf-market-table .pf-source{min-width:170px;max-width:240px;overflow:hidden;text-overflow:ellipsis;color:var(--pf-mkt-muted,#475467);font-weight:650}.pf-market-table td.pf-price,.pf-market-table td.pf-date,.pf-market-table td.pf-source{opacity:1}
+.pf-market-change.pf-up,.pf-up{color:var(--pf-mkt-up,#067647);font-weight:800}.pf-market-change.pf-down,.pf-down{color:var(--pf-mkt-down,#b42318);font-weight:800}.pf-market-change.pf-neutral,.pf-neutral{color:var(--pf-mkt-neutral,#344054);font-weight:750}
 .pf-market-pill{display:inline-flex;align-items:center;max-width:175px;padding:4px 9px;border:1px solid transparent;border-radius:999px;font-size:12px;line-height:1.25;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.pf-live{background:#dcfce7;color:#166534;border-color:#86efac}.pf-delayed{background:#fef3c7;color:#92400e;border-color:#fcd34d}.pf-closed{background:#f2f4f7;color:#475467;border-color:#d0d5dd}
-.pf-market-table-note{font-size:12.5px;line-height:1.45;color:#475467;margin:.35rem .2rem .6rem}
+.pf-live{background:var(--pf-mkt-live-bg,#dcfce7);color:var(--pf-mkt-live-text,#166534);border-color:var(--pf-mkt-live-border,#86efac)}.pf-delayed{background:var(--pf-mkt-delay-bg,#fef3c7);color:var(--pf-mkt-delay-text,#92400e);border-color:var(--pf-mkt-delay-border,#fcd34d)}.pf-closed{background:var(--pf-mkt-na-bg,#f2f4f7);color:var(--pf-mkt-na-text,#475467);border-color:var(--pf-mkt-na-border,#d0d5dd)}
+.pf-market-table-note{font-size:12.5px;line-height:1.45;color:var(--pf-mkt-note,#475467);margin:.35rem .2rem .6rem}
 @media(max-width:760px){.pf-market-table{min-width:850px;font-size:13px}.pf-market-table th{font-size:12.5px}.pf-market-table th,.pf-market-table td{padding:10px 11px}.pf-market-table-card{border-radius:12px}}
-@media(prefers-color-scheme:dark){.pf-market-table-card{background:#fff;color:#101828;border-color:#94a3b8}.pf-market-table-title{background:#e7eff8;color:#101828}.pf-market-table th{background:#e7eff8;color:#1d2939}.pf-market-table td{color:#172033}.pf-market-table .pf-price,.pf-market-table .pf-date{color:#344054}.pf-market-table .pf-source{color:#475467}.pf-market-table-note{color:#cbd5e1}}
+@media(forced-colors:active){.pf-market-table-card,.pf-market-table th,.pf-market-table td{border-color:CanvasText!important}.pf-market-table-card,.pf-market-table,.pf-market-table td,.pf-market-table th{background:Canvas!important;color:CanvasText!important}.pf-market-pill{border-color:CanvasText!important;color:CanvasText!important;background:Canvas!important}}
 </style>"""
 
 def _format_market_table(query):
@@ -1005,7 +1005,7 @@ def self_test():
     demo={'timestamp_utc':'Oct 06, 2026','source':'PSE EDGE'}
     assert _quote_date_from_row(demo)=='Oct 06, 2026'
     assert '<!--PF_MARKET_TABLE-->' in _format_market_table.__code__.co_consts
-    assert '#344054' in MARKET_TABLE_CSS and '#475467' in MARKET_TABLE_CSS and '#1d2939' in MARKET_TABLE_CSS
+    assert 'var(--pf-mkt-price' in MARKET_TABLE_CSS and 'var(--pf-mkt-border' in MARKET_TABLE_CSS and 'forced-colors:active' in MARKET_TABLE_CSS
     # Dynamic local-market tests. Default local market is controlled by PF_LOCAL_MARKET.
     expected_local=_MARKET_CONTEXTS.get(_DEFAULT_LOCAL_MARKET,_MARKET_CONTEXTS['MY'])['index']
     assert _symbol_from_query('local stock update today?')==expected_local
