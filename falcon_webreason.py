@@ -5,7 +5,7 @@ from html import unescape
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 
-APP_NAME='Purple Falcon PH'; VERSION='17.1.0'
+APP_NAME='Purple Falcon PH'; VERSION='17.1.1'
 ENABLED=os.getenv('PF_WEBREASON','1').strip().lower() not in ('0','false','no','off')
 MEMORY_FILE=os.getenv('PF_MEMORY_FILE','purple_falcon_memory.json')
 MAX_RESULTS=10; MIN_SOURCES=2
@@ -505,7 +505,24 @@ def _market_table_html(title,rows):
     return '<div class="pf-market-table-card">'+f'<div class="pf-market-table-title">💜 {_html_escape(title)}</div>'+'<div class="pf-market-table-scroll"><table class="pf-market-table"><thead><tr><th>Symbol</th><th>Price</th><th>Change</th><th>Session</th><th>Date</th><th>Source</th></tr></thead><tbody>'+''.join(body)+'</tbody></table></div></div>'
 
 MARKET_TABLE_CSS="""<style>
-.pf-market-table-card{border:1px solid rgba(127,127,127,.25);border-radius:14px;overflow:hidden;background:var(--pf-panel,#fff);margin:.55rem 0 1rem}.pf-market-table-title{font-weight:700;padding:12px 16px;border-bottom:1px solid rgba(127,127,127,.18)}.pf-market-table-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}.pf-market-table{width:100%;min-width:760px;border-collapse:separate;border-spacing:0;font-size:.94rem}.pf-market-table th{padding:12px 16px;text-align:left;background:rgba(120,120,120,.07);white-space:nowrap}.pf-market-table td{padding:12px 16px;border-top:1px solid rgba(127,127,127,.18);white-space:nowrap}.pf-market-table td+td,.pf-market-table th+th{border-left:1px solid rgba(127,127,127,.12)}.pf-symbol{font-weight:700}.pf-num{font-variant-numeric:tabular-nums}.pf-source{max-width:220px;overflow:hidden;text-overflow:ellipsis}.pf-up{color:#16803c;font-weight:700}.pf-down{color:#b42318;font-weight:700}.pf-neutral{color:#667085}.pf-market-pill{display:inline-flex;padding:3px 8px;border-radius:999px;font-size:.78rem;font-weight:700}.pf-live{background:#dcfce7;color:#166534}.pf-delayed{background:#fef3c7;color:#92400e}.pf-closed{background:#eef2f7;color:#475569}.pf-market-table-note{font-size:.78rem;opacity:.72;margin:.25rem .15rem .5rem}@media(max-width:640px){.pf-market-table{font-size:.88rem}.pf-market-table th,.pf-market-table td{padding:10px 12px}}
+.pf-market-table-card{border:1px solid #cbd5e1;border-radius:16px;overflow:hidden;background:#ffffff;color:#172033;margin:.65rem 0 1rem;box-shadow:0 4px 14px rgba(15,23,42,.12)}
+.pf-market-table-title{font-size:15px;line-height:1.35;font-weight:800;color:#172033;padding:14px 16px;border-bottom:1px solid #d0d5dd;background:#f8fafc;letter-spacing:.01em}
+.pf-market-table-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-color:#64748b #e2e8f0;scrollbar-width:auto}
+.pf-market-table-scroll::-webkit-scrollbar{height:12px}.pf-market-table-scroll::-webkit-scrollbar-track{background:#e2e8f0}.pf-market-table-scroll::-webkit-scrollbar-thumb{background:#64748b;border-radius:999px;border:2px solid #e2e8f0}
+.pf-market-table{width:100%;min-width:900px;border-collapse:separate;border-spacing:0;font-size:14px;line-height:1.35;color:#172033;background:#fff;table-layout:auto}
+.pf-market-table th{padding:13px 14px;text-align:left;background:#eef4fb;color:#344054;font-size:13px;font-weight:800;white-space:nowrap;border-bottom:2px solid #cbd5e1}
+.pf-market-table td{padding:12px 14px;border-top:1px solid #dbe2ea;color:#172033;vertical-align:middle;white-space:nowrap;background:#fff}
+.pf-market-table tbody tr:nth-child(even) td{background:#f8fbff}.pf-market-table tbody tr:hover td{background:#eef6ff}
+.pf-market-table td+td,.pf-market-table th+th{border-left:1px solid #dbe2ea}
+.pf-market-table .pf-symbol{font-weight:800;color:#101828;position:sticky;left:0;z-index:2;min-width:88px;background:#fff;box-shadow:2px 0 0 #dbe2ea}
+.pf-market-table tbody tr:nth-child(even) .pf-symbol{background:#f8fbff}.pf-market-table tbody tr:hover .pf-symbol{background:#eef6ff}.pf-market-table th:first-child{position:sticky;left:0;z-index:3;background:#e9f1fb;box-shadow:2px 0 0 #cbd5e1}
+.pf-market-table .pf-num{font-variant-numeric:tabular-nums;font-weight:650}.pf-source{min-width:170px;max-width:240px;overflow:hidden;text-overflow:ellipsis;color:#344054}
+.pf-market-change.pf-up,.pf-up{color:#067647;font-weight:800}.pf-market-change.pf-down,.pf-down{color:#b42318;font-weight:800}.pf-market-change.pf-neutral,.pf-neutral{color:#475467;font-weight:700}
+.pf-market-pill{display:inline-flex;align-items:center;max-width:175px;padding:4px 9px;border:1px solid transparent;border-radius:999px;font-size:12px;line-height:1.25;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pf-live{background:#dcfce7;color:#166534;border-color:#86efac}.pf-delayed{background:#fef3c7;color:#92400e;border-color:#fcd34d}.pf-closed{background:#f2f4f7;color:#475467;border-color:#d0d5dd}
+.pf-market-table-note{font-size:12.5px;line-height:1.45;color:#475467;margin:.35rem .2rem .6rem}
+@media(max-width:760px){.pf-market-table{min-width:850px;font-size:13px}.pf-market-table th{font-size:12.5px}.pf-market-table th,.pf-market-table td{padding:10px 11px}.pf-market-table-card{border-radius:12px}}
+@media(prefers-color-scheme:dark){.pf-market-table-card{background:#f8fafc;color:#101828;border-color:#94a3b8}.pf-market-table-title{background:#eaf1f8;color:#101828}.pf-market-table td{color:#101828}.pf-market-table-note{color:#cbd5e1}}
 </style>"""
 
 def _format_market_table(query):
