@@ -2,7 +2,7 @@
 
 
 # ==================================================
-# 💜 PURPLE FALCON PH v6.10.11 — LIVE SKILLS + SELF-LEARNING + FILE ANALYST + NEWS + LOGO + IMAGE/VIDEO 🇵🇭
+# 💜 PURPLE FALCON PH v6.10.12 — LIVE SKILLS + SELF-LEARNING + FILE ANALYST + NEWS + LOGO + IMAGE/VIDEO 🇵🇭
 # ==================================================
 #   ✅ Live skills that learn: weather, exchange rates, world clock, Wikipedia, web search, web pages, earthquakes, dictionary,
 #      country facts, calculator — used whenever the AI model can't answer or is unreachable (falcon_skills.py)
@@ -284,7 +284,7 @@ except Exception as e:
     localbrain, LOCAL_BRAIN_STATUS = None, f"⚠️ falcon_reasoning unavailable ({e.__class__.__name__})"
 
 print("=" * 60)
-print("💜 PURPLE FALCON PH v6.10.11 — PROTECTED 🇵🇭")
+print("💜 PURPLE FALCON PH v6.10.12 — PROTECTED 🇵🇭")
 if ENV_PATH:
     print(f"   .env file:     {'✅' if not ENV_PROBLEMS else '⚠️'} {ENV_LOADED} setting(s) read")
     for _p in ENV_PROBLEMS: print(f"                  ↳ {_p}")
@@ -376,7 +376,7 @@ def build_status_bar_html():
              ("Database", "Not Connected", False)]
     parts = "".join(f'<div class="pf-status-item{" ok" if ok else ""}"><span class="dot"></span><span>{name}: {state}</span></div>'
                     for name, state, ok in items)
-    return parts + '<div class="pf-status-item"><span>Purple Falcon AI v6.10.11</span></div>'
+    return parts + '<div class="pf-status-item"><span>Purple Falcon AI v6.10.12</span></div>'
 
 def build_sidebar_nav_html():
     soon = lambda icon, label: (f'<div class="pf-nav-item disabled"><span>{icon}</span>'
@@ -442,7 +442,7 @@ except Exception as _e:
     print(f"⚠️ Couldn't prepare chat avatar: {_e}")
 
 # ==================================================
-# SETTINGS LOCALIZATION v6.10.11
+# SETTINGS LOCALIZATION v6.10.12
 # ==================================================
 SETTINGS_LANGUAGES=[('English','en'),('Filipino / Tagalog','tl'),('Cebuano / Bisaya','ceb'),('Malay','ms'),('Indonesian','id'),('Spanish','es'),('French','fr'),('German','de'),('Portuguese','pt'),('Italian','it'),('Japanese / 日本語','ja'),('Korean / 한국어','ko')]
 SETTINGS_I18N={
@@ -472,7 +472,7 @@ UI_I18N={
 'it':{'new_chat':'Nuova Chat','workspace':'Area di lavoro','recent':'Recenti','soon':'Prossimamente','copy':'Copia','read':'Leggi ad alta voce','helpful':'Utile','not_helpful':'Non utile','insights':'Approfondimenti AI','run':'Esegui','running':'Esecuzione…','ready':'Pronto','offline':'Offline','not_connected':'Non connesso','knowledge':'Base di conoscenza','database':'Database','tools':'Strumenti','attach':'Allega file','clear':'Cancella','send':'Invia','stop':'Ferma','download':'Scarica','save':'Salva','reset':'Reimposta','close':'Chiudi','processing':'Elaborazione','uploading':'Caricamento','analyzing':'Analisi','generating':'Generazione','verifying':'Verifica'},
 'ja':{'new_chat':'新しいチャット','workspace':'ワークスペース','recent':'最近','soon':'近日公開','copy':'コピー','read':'読み上げ','helpful':'役に立った','not_helpful':'役に立たなかった','insights':'AI インサイト','run':'実行','running':'実行中…','ready':'準備完了','offline':'オフライン','not_connected':'未接続','knowledge':'ナレッジベース','database':'データベース','tools':'ツール','attach':'ファイルを添付','clear':'クリア','send':'送信','stop':'停止','download':'ダウンロード','save':'保存','reset':'リセット','close':'閉じる','processing':'処理中','uploading':'アップロード中','analyzing':'分析中','generating':'生成中','verifying':'確認中'},
 'ko':{'new_chat':'새 채팅','workspace':'작업 공간','recent':'최근','soon':'곧 제공','copy':'복사','read':'소리내어 읽기','helpful':'도움됨','not_helpful':'도움 안 됨','insights':'AI 인사이트','run':'실행','running':'실행 중…','ready':'준비됨','offline':'오프라인','not_connected':'연결 안 됨','knowledge':'지식 베이스','database':'데이터베이스','tools':'도구','attach':'파일 첨부','clear':'지우기','send':'보내기','stop':'중지','download':'다운로드','save':'저장','reset':'재설정','close':'닫기','processing':'처리 중','uploading':'업로드 중','analyzing':'분석 중','generating':'생성 중','verifying':'확인 중'}}
-# v6.10.11 dark-mode accessibility checks
+# v6.10.12 dark-mode accessibility checks
 # WCAG-style relative luminance / contrast helpers for deterministic theme checks.
 def _a11y_hex_rgb(value):
     v=str(value or '').strip().lstrip('#')
@@ -488,6 +488,16 @@ def _a11y_luminance(value):
 def _a11y_contrast(fg,bg):
     a,b=_a11y_luminance(fg),_a11y_luminance(bg); hi,lo=max(a,b),min(a,b)
     return (hi+0.05)/(lo+0.05)
+
+def run_market_theme_accessibility_checks():
+    failures=[];checks=[]
+    for key,th in THEMES.items():
+        dark=th.get('scheme')=='dark'
+        palette=({'bg':'#111827','text':'#f8fafc','muted':'#d5deea','border':'#8191a6','up':'#4ade80','down':'#fb7185'} if dark else {'bg':'#ffffff','text':'#172033','muted':'#475467','border':'#94a3b8','up':'#067647','down':'#b42318'})
+        for role,fg,minimum in [('text',palette['text'],4.5),('muted',palette['muted'],4.5),('up',palette['up'],4.5),('down',palette['down'],4.5),('border',palette['border'],3.0)]:
+            ratio=_a11y_contrast(fg,palette['bg']);ok=ratio>=minimum;checks.append({'theme':key,'role':role,'ratio':round(ratio,2),'minimum':minimum,'passed':ok})
+            if not ok:failures.append((key,role,round(ratio,2),minimum))
+    return {'passed':not failures,'failures':failures,'checks':checks,'themes':len(THEMES)}
 
 def run_dark_mobile_accessibility_checks():
     failures=[]; checks=[]
@@ -637,7 +647,7 @@ def localized_system_status_html(lang='en'):
 def localized_settings_html(lang='en'):
     x=SETTINGS_I18N.get(lang,SETTINGS_I18N['en']);return f'<div class="pf-settings-title" role="heading" aria-level="2">{x[0]}</div><div class="pf-settings-group-title">{x[2]}</div>'
 def localized_settings_detail_html(lang='en'):
-    x=SETTINGS_I18N.get(lang,SETTINGS_I18N['en']);status=x[7] if AI_CONFIGURED else x[8];on='On' if RUN_CODE_ENABLED else 'Off';return f'<div class="pf-settings-group-title">{x[4]}</div><div style="font-size:.78rem;color:var(--pf-text2)">🎤</div><div class="pf-settings-group-title">{x[5]}</div><div style="font-size:.78rem;color:var(--pf-text2);line-height:1.6">Purple Falcon AI v6.10.11<br>{x[6]}: {on}</div>'
+    x=SETTINGS_I18N.get(lang,SETTINGS_I18N['en']);status=x[7] if AI_CONFIGURED else x[8];on='On' if RUN_CODE_ENABLED else 'Off';return f'<div class="pf-settings-group-title">{x[4]}</div><div style="font-size:.78rem;color:var(--pf-text2)">🎤</div><div class="pf-settings-group-title">{x[5]}</div><div style="font-size:.78rem;color:var(--pf-text2);line-height:1.6">Purple Falcon AI v6.10.12<br>{x[6]}: {on}</div>'
 
 
 def localized_action_updates(lang='en'):
@@ -691,6 +701,13 @@ THEMES = {
 }
 
 def theme_vars(t):
+    dark=t.get('scheme')=='dark'
+    # Market tables inherit the active Purple Falcon theme, with stronger contrast than ordinary chat chrome.
+    mkt=(
+      {'bg':'#111827','row':'#111827','row_alt':'#172033','header':'#223047','title_bg':'#18243a','text':'#f8fafc','title':'#ffffff','header_text':'#f8fafc','symbol':'#ffffff','price':'#f1f5f9','date':'#e2e8f0','muted':'#d5deea','border':'#53657d','border_strong':'#8191a6','hover':'#24344d','up':'#4ade80','down':'#fb7185','neutral':'#e2e8f0','note':'#d5deea','scroll_track':'#243047','scroll_thumb':'#94a3b8','shadow':'rgba(0,0,0,.30)','live_bg':'#123c2a','live_text':'#86efac','live_border':'#35c77a','delay_bg':'#4a3610','delay_text':'#fde68a','delay_border':'#d9a624','na_bg':'#273244','na_text':'#e2e8f0','na_border':'#65758b'}
+      if dark else
+      {'bg':'#ffffff','row':'#ffffff','row_alt':'#f8fbff','header':'#e7eff8','title_bg':'#f8fafc','text':'#172033','title':'#101828','header_text':'#1d2939','symbol':'#101828','price':'#344054','date':'#344054','muted':'#475467','border':'#cbd5e1','border_strong':'#94a3b8','hover':'#eef6ff','up':'#067647','down':'#b42318','neutral':'#344054','note':'#475467','scroll_track':'#e2e8f0','scroll_thumb':'#64748b','shadow':'rgba(15,23,42,.12)','live_bg':'#dcfce7','live_text':'#166534','live_border':'#86efac','delay_bg':'#fef3c7','delay_text':'#92400e','delay_border':'#fcd34d','na_bg':'#f2f4f7','na_text':'#475467','na_border':'#d0d5dd'}
+    )
     return f"""
     --pf-bg:{t['bg']}; --pf-bg2:{t['bg2']}; --pf-bg3:{t['bg3']};
     --pf-text:{t['text']}; --pf-text2:{t['text2']}; --pf-muted:{t['muted']};
@@ -698,6 +715,15 @@ def theme_vars(t):
     --pf-glow:{t['glow']}; --pf-glow2:{t['glow2']};
     --pf-user:{t['user']}; --pf-ai:{t['ai']};
     --pf-border:{t['border']}; --pf-input:{t['input']};
+    --pf-mkt-bg:{mkt['bg']}; --pf-mkt-row:{mkt['row']}; --pf-mkt-row-alt:{mkt['row_alt']};
+    --pf-mkt-header:{mkt['header']}; --pf-mkt-title-bg:{mkt['title_bg']}; --pf-mkt-hover:{mkt['hover']};
+    --pf-mkt-text:{mkt['text']}; --pf-mkt-title:{mkt['title']}; --pf-mkt-header-text:{mkt['header_text']}; --pf-mkt-symbol:{mkt['symbol']};
+    --pf-mkt-price:{mkt['price']}; --pf-mkt-date:{mkt['date']}; --pf-mkt-muted:{mkt['muted']}; --pf-mkt-note:{mkt['note']}; --pf-mkt-neutral:{mkt['neutral']};
+    --pf-mkt-border:{mkt['border']}; --pf-mkt-border-strong:{mkt['border_strong']}; --pf-mkt-shadow:{mkt['shadow']};
+    --pf-mkt-up:{mkt['up']}; --pf-mkt-down:{mkt['down']}; --pf-mkt-scroll-track:{mkt['scroll_track']}; --pf-mkt-scroll-thumb:{mkt['scroll_thumb']};
+    --pf-mkt-live-bg:{mkt['live_bg']}; --pf-mkt-live-text:{mkt['live_text']}; --pf-mkt-live-border:{mkt['live_border']};
+    --pf-mkt-delay-bg:{mkt['delay_bg']}; --pf-mkt-delay-text:{mkt['delay_text']}; --pf-mkt-delay-border:{mkt['delay_border']};
+    --pf-mkt-na-bg:{mkt['na_bg']}; --pf-mkt-na-text:{mkt['na_text']}; --pf-mkt-na-border:{mkt['na_border']};
     color-scheme:{t['scheme']};
     --body-background-fill:{t['bg']};
     --background-fill-primary:{t['bg2']};
@@ -1101,7 +1127,7 @@ body.pf-tools-open #pf-tools-link { background: var(--pf-bg3) !important; color:
 .pf-status-item .dot { width: 6px; height: 6px; border-radius: 50%; background: #6b7280; flex: 0 0 auto; }
 .pf-status-item.ok .dot { background: #22c55e; }
 
-/* ---------- v6.10.11 unified rounded + fluid responsive shell ---------- */
+/* ---------- v6.10.12 unified rounded + fluid responsive shell ---------- */
 :root {
     --pf-radius-xs: clamp(8px, .55vw, 12px);
     --pf-radius-sm: clamp(12px, .8vw, 16px);
@@ -1170,7 +1196,7 @@ body.pf-tools-open #pf-tools-link { background: var(--pf-bg3) !important; color:
     #pf-app-shell { width: min(calc(100% - 32px), 1760px); }
     #pf-chat-scroll, #pf-composer-area { padding-inline: clamp(1.25rem, 2vw, 2.25rem) !important; }
 }
-/* ---------- v6.10.11 fluid spacing system ---------- */
+/* ---------- v6.10.12 fluid spacing system ---------- */
 :root {
     --pf-space-1: clamp(4px, .28vw, 6px);
     --pf-space-2: clamp(6px, .42vw, 9px);
@@ -1238,12 +1264,12 @@ body.pf-tools-open #pf-tools-link { background: var(--pf-bg3) !important; color:
 @media (min-width: 1600px) {
     :root { --pf-content-pad-x: clamp(1.4rem, 1.8vw, 2.3rem); --pf-section-gap: clamp(1rem, 1.15vw, 1.5rem); }
 }
-/* v6.10.11 theme selector + settings overflow hardening */
+/* v6.10.12 theme selector + settings overflow hardening */
 #pf-settings-panel { overflow-x: hidden !important; }
 #pf-settings-panel > *, #pf-settings-panel .form, #pf-settings-panel .wrap { max-width: 100% !important; min-width: 0 !important; }
 #pf-theme, #pf-settings-language { width: 100% !important; max-width: 100% !important; min-width: 0 !important; }
 #pf-theme .wrap, #pf-settings-language .wrap { overflow: visible !important; }
-/* ---------- v6.10.11 fullscreen shell + all-device settings select fix ---------- */
+/* ---------- v6.10.12 fullscreen shell + all-device settings select fix ---------- */
 html, body, gradio-app, .gradio-container {
     width: 100% !important; max-width: none !important;
     height: 100vh !important; height: 100svh !important; height: 100dvh !important;
@@ -1358,7 +1384,7 @@ body > [role="listbox"] {
     body.pf-sidebar-collapsed .pf-nav-label, body.pf-sidebar-collapsed .pf-nav-section-title, body.pf-sidebar-collapsed .pf-recent-list { display: block !important; }
 }
 @media (max-width: 640px) {
-    /* v6.10.11: touch-friendly bottom sheet plus explicit dark-theme mobile treatment */
+    /* v6.10.12: touch-friendly bottom sheet plus explicit dark-theme mobile treatment */
     #pf-settings-overlay { background: rgba(0,0,0,.52); backdrop-filter: blur(2px); }
     #pf-settings-panel {
         top: auto; right: 0; bottom: 0; left: 0;
@@ -1402,7 +1428,7 @@ body > [role="listbox"] {
     #pf-workspace-header { padding-left: .75rem !important; padding-right: .75rem !important; }
     #pf-status-bar { gap: .6rem !important; font-size: .64rem; flex-wrap: nowrap; overflow-x: auto; justify-content: flex-start !important; padding: 0 .6rem; }
 }
-/* v6.10.11 dark-mode mobile settings */
+/* v6.10.12 dark-mode mobile settings */
 @media (max-width: 640px) {
     :root[data-pf-theme="purple"], :root[data-pf-theme="sunset"], :root[data-pf-theme="ocean"], :root[data-pf-theme="emerald"] { color-scheme: dark; }
     :root[data-pf-theme="purple"] #pf-settings-panel, :root[data-pf-theme="sunset"] #pf-settings-panel, :root[data-pf-theme="ocean"] #pf-settings-panel, :root[data-pf-theme="emerald"] #pf-settings-panel {
@@ -1419,7 +1445,7 @@ body > [role="listbox"] {
     :root[data-pf-theme="purple"] #pf-settings-close, :root[data-pf-theme="sunset"] #pf-settings-close, :root[data-pf-theme="ocean"] #pf-settings-close, :root[data-pf-theme="emerald"] #pf-settings-close { color:var(--pf-text) !important; background:color-mix(in srgb,var(--pf-bg3) 86%,transparent) !important; border-radius:10px !important; }
     :root[data-pf-theme="purple"] #pf-settings-close:hover, :root[data-pf-theme="sunset"] #pf-settings-close:hover, :root[data-pf-theme="ocean"] #pf-settings-close:hover, :root[data-pf-theme="emerald"] #pf-settings-close:hover { background:color-mix(in srgb,var(--pf-accent) 24%,var(--pf-bg3)) !important; }
 }
-/* v6.10.11 accessibility additions for mobile dark settings */
+/* v6.10.12 accessibility additions for mobile dark settings */
 @media (max-width: 640px) {
     #pf-settings-panel button:focus-visible,
     #pf-settings-panel input:focus-visible,
@@ -1456,7 +1482,7 @@ body > [role="listbox"] {
     #pf-composer-links { margin-top: .15rem !important; }
     .pf-welcome { padding-top: .75rem; padding-bottom: .75rem; }
 }
-/* v6.10.11 final safe layout overrides */
+/* v6.10.12 final safe layout overrides */
 html,body,gradio-app,.gradio-container { width:100% !important; max-width:none !important; margin:0 !important; padding:0 !important; border-radius:0 !important; }
 .gradio-container { height:100dvh !important; min-height:100dvh !important; overflow:hidden !important; }
 #pf-app-shell { width:100% !important; max-width:none !important; height:100dvh !important; margin:0 !important; border:0 !important; border-radius:0 !important; box-shadow:none !important; }
@@ -1473,8 +1499,8 @@ html,body,gradio-app,.gradio-container { width:100% !important; max-width:none !
 #pf-settings-panel [role="listbox"],.gradio-container [role="listbox"],body > [role="listbox"] { z-index:10050 !important; pointer-events:auto !important; }
 @media (max-width:640px) and (orientation:portrait){#pf-settings-panel{top:auto !important;left:0 !important;right:0 !important;bottom:0 !important;width:100vw !important;max-width:100vw !important;height:min(88dvh,760px) !important;max-height:88dvh !important;transform:translateY(105%) !important;border-radius:20px 20px 0 0 !important}#pf-settings-panel.pf-open{transform:translateY(0) !important}}
 @media (orientation:landscape) and (max-height:700px) and (max-width:1180px){#pf-settings-panel{top:0 !important;left:auto !important;right:0 !important;bottom:0 !important;width:min(440px,92vw) !important;max-width:92vw !important;height:100dvh !important;max-height:100dvh !important;transform:translateX(105%) !important;border-radius:16px 0 0 16px !important}#pf-settings-panel.pf-open{transform:translateX(0) !important}}
-\n/* v6.10.11 Copilot-style composer, centered in chat column */\n#pf-main{position:relative !important}\n#pf-chat-scroll{padding-bottom:120px !important}\n#pf-composer-area{position:absolute !important;left:0 !important;right:0 !important;bottom:0 !important;z-index:35 !important;border-top:0 !important;background:linear-gradient(to bottom,transparent,var(--pf-bg) 35%) !important;max-height:none !important;overflow:visible !important}\n#pf-inputbar{width:min(980px,calc(100% - 2 * var(--pf-content-pad-x))) !important;max-width:980px !important;margin-left:auto !important;margin-right:auto !important;min-height:76px !important;border-radius:28px !important}\n@media(max-width:640px){#pf-chat-scroll{padding-bottom:98px !important}#pf-inputbar{width:calc(100% - 2 * var(--pf-content-pad-x)) !important;min-height:62px !important;border-radius:24px !important}}\n
-/* v6.10.11 definitive edge-to-edge viewport + tiny AI disclaimer */
+\n/* v6.10.12 Copilot-style composer, centered in chat column */\n#pf-main{position:relative !important}\n#pf-chat-scroll{padding-bottom:120px !important}\n#pf-composer-area{position:absolute !important;left:0 !important;right:0 !important;bottom:0 !important;z-index:35 !important;border-top:0 !important;background:linear-gradient(to bottom,transparent,var(--pf-bg) 35%) !important;max-height:none !important;overflow:visible !important}\n#pf-inputbar{width:min(980px,calc(100% - 2 * var(--pf-content-pad-x))) !important;max-width:980px !important;margin-left:auto !important;margin-right:auto !important;min-height:76px !important;border-radius:28px !important}\n@media(max-width:640px){#pf-chat-scroll{padding-bottom:98px !important}#pf-inputbar{width:calc(100% - 2 * var(--pf-content-pad-x)) !important;min-height:62px !important;border-radius:24px !important}}\n
+/* v6.10.12 definitive edge-to-edge viewport + tiny AI disclaimer */
 html, body, gradio-app, .gradio-container,
 .gradio-container > .main, .gradio-container > .wrap,
 .gradio-container .contain, #root, #root > div {
@@ -2807,7 +2833,7 @@ def run_trusted_market_renderer_tests():
 
 def run_high_contrast_market_ui_checks():
     source=open(__file__,encoding="utf-8").read()
-    required=["pf-market-result","max-width: min(1080px, 94vw)","_trusted_market_table_html","pf-market-table-card","pf-price","pf-date","pf-session"]
+    required=["pf-market-result","max-width: min(1080px, 94vw)","_trusted_market_table_html","pf-market-table-card","pf-price","pf-date","pf-session","--pf-mkt-bg","--pf-mkt-border","run_market_theme_accessibility_checks"]
     return {"passed":all(x in source for x in required),"checks":len(required)}
 
 def _is_structured(html_body):
@@ -5165,7 +5191,7 @@ def apply_confidentiality_guard(reply):
         return confidential_falcon_reply()
     return text
 
-# ---- v6.10.11 public meta conversation regression tests ----
+# ---- v6.10.12 public meta conversation regression tests ----
 _PUBLIC_META_TRUE_CASES=[
 'pano ka ba kumukuha ng information?','paano ka kumukuha ng impormasyon?','how do you get information?','where do you get information?',
 'pano ka naghahanap ng info?','paano ka naghahanap ng data?','saan galing ang information mo?','saan ka kumukuha ng datos?',
