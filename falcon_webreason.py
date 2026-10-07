@@ -5,7 +5,7 @@ from html import unescape
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 
-APP_NAME='Purple Falcon PH'; VERSION='17.1.3'
+APP_NAME='Purple Falcon PH'; VERSION='17.2.0'
 ENABLED=os.getenv('PF_WEBREASON','1').strip().lower() not in ('0','false','no','off')
 MEMORY_FILE=os.getenv('PF_MEMORY_FILE','purple_falcon_memory.json')
 MAX_RESULTS=10; MIN_SOURCES=2
@@ -111,16 +111,30 @@ _FINANCE_DOMAINS=('finance.yahoo.com','nasdaq.com','reuters.com','bloomberg.com'
 
 _LOCAL_MARKET_RE=re.compile(r'\b(?:local|domestic|home)\b.*\b(?:stock|stocks|market|shares?|index|update)\b|\b(?:stock|stocks|market|shares?|index)\b.*\b(?:local|domestic|home)\b',re.I)
 _MARKET_CONTEXTS={
- 'MY':{'index':'^KLSE','currency':'MYR','aliases':('malaysia','malaysian','bursa','bursa malaysia','klse','fbm klci','klci','kuala lumpur')},
- 'PH':{'index':'PSEI.PS','currency':'PHP','aliases':('philippines','philippine','pse','psei','manila')},
- 'SG':{'index':'^STI','currency':'SGD','aliases':('singapore','sgx','sti','straits times')},
- 'JP':{'index':'^N225','currency':'JPY','aliases':('japan','tokyo','nikkei','nikkei 225')},
- 'HK':{'index':'^HSI','currency':'HKD','aliases':('hong kong','hkex','hang seng','hsi')},
- 'AU':{'index':'^AXJO','currency':'AUD','aliases':('australia','asx','asx 200')},
- 'IN':{'index':'^NSEI','currency':'INR','aliases':('india','nse','nifty','nifty 50')},
- 'UK':{'index':'^FTSE','currency':'GBP','aliases':('united kingdom','uk','london','ftse','ftse 100')},
- 'US':{'index':'^GSPC','currency':'USD','aliases':('united states','usa','us market','s&p 500','sp500')},
+ 'US':{'index':'^GSPC','currency':'USD','name':'United States','aliases':('united states','usa','us market','america','american','nyse','nasdaq','s&p 500','sp500')},
+ 'CA':{'index':'^GSPTSE','currency':'CAD','name':'Canada','aliases':('canada','canadian','tsx','toronto')},
+ 'MX':{'index':'^MXX','currency':'MXN','name':'Mexico','aliases':('mexico','mexican','bmv','bolsa mexicana')},
+ 'BR':{'index':'^BVSP','currency':'BRL','name':'Brazil','aliases':('brazil','brazilian','b3','bovespa','ibovespa')},
+ 'UK':{'index':'^FTSE','currency':'GBP','name':'United Kingdom','aliases':('united kingdom','uk','britain','british','london','lse','ftse','ftse 100')},
+ 'DE':{'index':'^GDAXI','currency':'EUR','name':'Germany','aliases':('germany','german','xetra','frankfurt','dax')},
+ 'FR':{'index':'^FCHI','currency':'EUR','name':'France','aliases':('france','french','paris','euronext paris','cac 40')},
+ 'NL':{'index':'^AEX','currency':'EUR','name':'Netherlands','aliases':('netherlands','dutch','amsterdam','euronext amsterdam','aex')},
+ 'CH':{'index':'^SSMI','currency':'CHF','name':'Switzerland','aliases':('switzerland','swiss','six','smi')},
+ 'IT':{'index':'FTSEMIB.MI','currency':'EUR','name':'Italy','aliases':('italy','italian','milan','borsa italiana','ftse mib')},
+ 'ES':{'index':'^IBEX','currency':'EUR','name':'Spain','aliases':('spain','spanish','madrid','bme','ibex')},
+ 'MY':{'index':'^KLSE','currency':'MYR','name':'Malaysia','aliases':('malaysia','malaysian','bursa','bursa malaysia','klse','fbm klci','klci','kuala lumpur')},
+ 'PH':{'index':'PSEI.PS','currency':'PHP','name':'Philippines','aliases':('philippines','philippine','pse','psei','manila')},
+ 'SG':{'index':'^STI','currency':'SGD','name':'Singapore','aliases':('singapore','sgx','sti','straits times')},
+ 'JP':{'index':'^N225','currency':'JPY','name':'Japan','aliases':('japan','japanese','tokyo','tse','nikkei','nikkei 225')},
+ 'HK':{'index':'^HSI','currency':'HKD','name':'Hong Kong','aliases':('hong kong','hkex','hang seng','hsi')},
+ 'CN':{'index':'000001.SS','currency':'CNY','name':'China','aliases':('china','chinese','shanghai','shenzhen','sse','szse')},
+ 'IN':{'index':'^NSEI','currency':'INR','name':'India','aliases':('india','indian','nse','nifty','nifty 50')},
+ 'KR':{'index':'^KS11','currency':'KRW','name':'South Korea','aliases':('south korea','korea','korean','krx','kospi')},
+ 'TW':{'index':'^TWII','currency':'TWD','name':'Taiwan','aliases':('taiwan','taiwanese','twse','taiex')},
+ 'AU':{'index':'^AXJO','currency':'AUD','name':'Australia','aliases':('australia','australian','asx','asx 200')},
+ 'NZ':{'index':'^NZ50','currency':'NZD','name':'New Zealand','aliases':('new zealand','nz','nzx','nzx 50')},
 }
+
 _INDEX_SYMBOLS={meta['index'] for meta in _MARKET_CONTEXTS.values()}
 _DEFAULT_LOCAL_MARKET=os.getenv('PF_LOCAL_MARKET','MY').strip().upper() or 'MY'
 
@@ -154,10 +168,12 @@ _MARKET_TABLE_RE=re.compile(r'\b(?:table|tabulate|list|compare|comparison|watchl
 def _market_table_request(query):
     q=clean_query(query);low=q.lower()
     if not _MARKET_TABLE_RE.search(q):return None
-    region=_explicit_market_region(q) or (_DEFAULT_LOCAL_MARKET if re.search(r'\blocal\b',q,re.I) else None)
-    if re.search(r'\b(?:ph|philippines|philippine|pse)\b',q,re.I):region='PH'
-    if re.search(r'\b(?:my|malaysia|malaysian|bursa|klse)\b',q,re.I):region='MY'
-    return {'intent':'market_table','region':region or _DEFAULT_LOCAL_MARKET}
+    region=_explicit_market_region(q)
+    if not region and re.search(r'\b(?:PH|PSE)\b',q,re.I):region='PH'
+    if not region and re.search(r'\b(?:MY|KLSE)\b',q,re.I):region='MY'
+    if not region and re.search(r'\blocal\b',q,re.I):region=_DEFAULT_LOCAL_MARKET
+    if not region and re.search(r'\b(?:US|U\.S\.|USA)\b',q,re.I) and re.search(r'\b(?:stocks?|shares?|market|banks?|technology|tech)\b',q,re.I):region='US'
+    return {'intent':'market_table','region':region or _DEFAULT_LOCAL_MARKET,'sector':_sector_from_query(q) if '_sector_from_query' in globals() else None}
 
 def _dynamic_market_intent(query):
     q=clean_query(query)
@@ -207,10 +223,14 @@ _EXCHANGE_ALIASES={
  'jp':{'suffix':'.T','currency':'JPY','names':('tokyo','tse','japan')},
  'hk':{'suffix':'.HK','currency':'HKD','names':('hong kong','hkex','hk')},
  'au':{'suffix':'.AX','currency':'AUD','names':('australia','asx')},
- 'ca':{'suffix':'.TO','currency':'CAD','names':('canada','toronto','tsx')},
+ 'ca':{'suffix':'.TO','currency':'CAD','names':('canada','canadian','toronto','tsx')},
+ 'mx':{'suffix':'.MX','currency':'MXN','names':('mexico','mexican','bmv')},
+ 'br':{'suffix':'.SA','currency':'BRL','names':('brazil','brazilian','b3','bovespa')},
  'de':{'suffix':'.DE','currency':'EUR','names':('germany','xetra','frankfurt')},
  'fr':{'suffix':'.PA','currency':'EUR','names':('france','paris','euronext paris')},
  'nl':{'suffix':'.AS','currency':'EUR','names':('netherlands','amsterdam','euronext amsterdam')},
+ 'it':{'suffix':'.MI','currency':'EUR','names':('italy','milan','borsa italiana')},
+ 'es':{'suffix':'.MC','currency':'EUR','names':('spain','madrid','bme')},
  'ch':{'suffix':'.SW','currency':'CHF','names':('switzerland','six','swiss')},
  'in-nse':{'suffix':'.NS','currency':'INR','names':('india','nse','national stock exchange india')},
  'in-bse':{'suffix':'.BO','currency':'INR','names':('bse','bombay stock exchange')},
@@ -218,6 +238,10 @@ _EXCHANGE_ALIASES={
  'sg':{'suffix':'.SI','currency':'SGD','names':('singapore','sgx')},
  'my':{'suffix':'.KL','currency':'MYR','names':('malaysia','bursa malaysia','bursa','klse')},
  'ph':{'suffix':'.PS','currency':'PHP','names':('philippines','philippine','pse','philippine stock exchange')},
+ 'tw':{'suffix':'.TW','currency':'TWD','names':('taiwan','twse')},
+ 'cn-sh':{'suffix':'.SS','currency':'CNY','names':('china','shanghai','sse')},
+ 'cn-sz':{'suffix':'.SZ','currency':'CNY','names':('shenzhen','szse')},
+ 'nz':{'suffix':'.NZ','currency':'NZD','names':('new zealand','nzx')},
 }
 _INTERNATIONAL_ALIASES={
  'toyota':{'jp':'7203.T'},'sony':{'jp':'6758.T'},'softbank group':{'jp':'9984.T'},
@@ -234,7 +258,7 @@ _INTERNATIONAL_ALIASES={
  'maybank':{'my':'1155.KL'},'public bank':{'my':'1295.KL'},'tenaga nasional':{'my':'5347.KL'},'tenaga':{'my':'5347.KL'},
  'vodafone':{'uk':'VOD.L'},'shell':{'uk':'SHEL.L'},'hsbc':{'uk':'HSBA.L'},
 }
-_KNOWN_SUFFIXES=('.L','.T','.HK','.AX','.TO','.DE','.PA','.AS','.SW','.NS','.BO','.KS','.SI','.KL','.PS')
+_KNOWN_SUFFIXES=('.L','.T','.HK','.AX','.TO','.V','.DE','.F','.PA','.AS','.SW','.NS','.BO','.KS','.KQ','.SI','.KL','.PS','.MX','.SA','.MI','.MC','.TW','.SS','.SZ','.NZ')
 _PSE_SUFFIX='.PS'
 _PSE_DIRECTORY_URL='https://edge.pse.com.ph/companyDirectory/form.do'
 _PSE_CACHE_FILE=os.getenv('PF_PSE_CATALOG_FILE','purple_falcon_pse_catalog.json')
@@ -403,14 +427,49 @@ def _exchange_from_query(query):
     return hits[0] if hits else None
 
 _REGION_BASKETS={
- 'PH':['BDO.PS','BPI.PS','JFC.PS','SM.PS','SMPH.PS','ALI.PS','TEL.PS','GLO.PS','MER.PS','ICT.PS','ACEN.PS','AP.PS'],
+ 'US':['AAPL','MSFT','NVDA','AMZN','GOOGL','META','BRK-B','JPM','AVGO','TSLA'],
+ 'CA':['RY.TO','TD.TO','SHOP.TO','ENB.TO','BNS.TO','CNQ.TO','CP.TO','CNR.TO','BMO.TO','TRI.TO'],
+ 'MX':['WALMEX.MX','AMXL.MX','FEMSAUBD.MX','GMEXICOB.MX','CEMEXCPO.MX','GAPB.MX','ASURB.MX','KOFUBL.MX','BIMBOA.MX','GFNORTEO.MX'],
+ 'BR':['PETR4.SA','VALE3.SA','ITUB4.SA','BBDC4.SA','ABEV3.SA','WEGE3.SA','BBAS3.SA','B3SA3.SA','RENT3.SA','PRIO3.SA'],
+ 'UK':['AZN.L','SHEL.L','HSBA.L','ULVR.L','BP.L','GSK.L','RIO.L','REL.L','LSEG.L','BARC.L'],
+ 'DE':['SAP.DE','SIE.DE','DTE.DE','ALV.DE','AIR.DE','BMW.DE','MBG.DE','BAS.DE','IFX.DE','ADS.DE'],
+ 'FR':['MC.PA','OR.PA','TTE.PA','AIR.PA','SAN.PA','SU.PA','BNP.PA','EL.PA','CS.PA','DG.PA'],
+ 'NL':['ASML.AS','SHELL.AS','INGA.AS','PRX.AS','ADYEN.AS','PHIA.AS','AD.AS','HEIA.AS','WKL.AS','KPN.AS'],
+ 'CH':['NESN.SW','NOVN.SW','ROG.SW','UBSG.SW','ABBN.SW','ZURN.SW','CFR.SW','SIKA.SW','LONN.SW','GIVN.SW'],
+ 'IT':['ENI.MI','ENEL.MI','ISP.MI','UCG.MI','STLAM.MI','RACE.MI','G.MI','SRG.MI','TEN.MI','PRY.MI'],
+ 'ES':['SAN.MC','IBE.MC','ITX.MC','BBVA.MC','CABK.MC','REP.MC','TEF.MC','AENA.MC','FER.MC','AMS.MC'],
+ 'JP':['7203.T','6758.T','9984.T','8306.T','8035.T','6861.T','6501.T','8058.T','6098.T','9432.T'],
+ 'HK':['0700.HK','9988.HK','0005.HK','1299.HK','0941.HK','3690.HK','2318.HK','0883.HK','0388.HK','0016.HK'],
+ 'CN':['600519.SS','601318.SS','600036.SS','601166.SS','600900.SS','000858.SZ','000333.SZ','002594.SZ','300750.SZ','000001.SZ'],
+ 'IN':['RELIANCE.NS','TCS.NS','HDFCBANK.NS','BHARTIARTL.NS','ICICIBANK.NS','INFY.NS','SBIN.NS','LICI.NS','ITC.NS','HINDUNILVR.NS'],
+ 'KR':['005930.KS','000660.KS','373220.KS','207940.KS','005380.KS','000270.KS','068270.KS','105560.KS','035420.KS','055550.KS'],
+ 'TW':['2330.TW','2317.TW','2454.TW','2308.TW','2881.TW','2891.TW','2882.TW','2303.TW','2412.TW','3711.TW'],
+ 'SG':['D05.SI','O39.SI','U11.SI','Z74.SI','C6L.SI','S68.SI','A17U.SI','C38U.SI','BN4.SI','F34.SI'],
  'MY':['1155.KL','1295.KL','1023.KL','5347.KL','5225.KL','5183.KL','6012.KL','6033.KL','8869.KL','3816.KL'],
+ 'PH':['BDO.PS','BPI.PS','JFC.PS','SM.PS','SMPH.PS','ALI.PS','TEL.PS','GLO.PS','MER.PS','ICT.PS','ACEN.PS','AP.PS'],
+ 'AU':['BHP.AX','CBA.AX','CSL.AX','NAB.AX','WBC.AX','ANZ.AX','WES.AX','MQG.AX','GMG.AX','RIO.AX'],
+ 'NZ':['FPH.NZ','AIR.NZ','SPK.NZ','MEL.NZ','MCY.NZ','IFT.NZ','CEN.NZ','EBO.NZ','ATM.NZ','GMT.NZ'],
 }
+_REGION_SECTOR_BASKETS={
+ ('US','technology'):['AAPL','MSFT','NVDA','AVGO','ORCL','CRM','AMD','ADBE','QCOM','INTC'],
+ ('US','banks'):['JPM','BAC','WFC','C','GS','MS','USB','PNC','TFC','BK'],
+ ('JP','automakers'):['7203.T','7267.T','7201.T','7269.T','7270.T','7211.T','7202.T','7205.T','7272.T','7203.T'],
+ ('PH','banks'):['BDO.PS','BPI.PS','MBT.PS','UBP.PS','AUB.PS','BNCOM.PS'],
+ ('SG','banks'):['D05.SI','O39.SI','U11.SI'],
+ ('HK','technology'):['0700.HK','9988.HK','3690.HK','1810.HK','9618.HK','9999.HK'],
+}
+_SECTOR_QUERY_ALIASES={'technology':('technology','tech','semiconductor','software'),'banks':('bank','banks','banking'),'automakers':('automaker','automakers','auto','automotive','car makers')}
+def _sector_from_query(query):
+    low=clean_query(query).lower()
+    for key,names in _SECTOR_QUERY_ALIASES.items():
+        if any(re.search(r'(?<![a-z0-9])'+re.escape(n)+r'(?![a-z0-9])',low) for n in names):return key
+    return None
 
 def _market_table_symbols(query,limit=10):
-    req=_market_table_request(query) or {};region=req.get('region') or _DEFAULT_LOCAL_MARKET
-    syms=list(_REGION_BASKETS.get(region,[]))
+    req=_market_table_request(query) or {};region=req.get('region') or _DEFAULT_LOCAL_MARKET;sector=_sector_from_query(query)
+    syms=list(_REGION_SECTOR_BASKETS.get((region,sector),_REGION_BASKETS.get(region,[])))
     return syms[:max(1,min(int(limit or 10),15))]
+
 
 def _pse_search_quote(symbol):
     base=(symbol or '').upper().removesuffix('.PS')
@@ -532,7 +591,10 @@ def _format_market_table(query):
         row=_compact_quote_row(sym)
         if row:rows.append(row)
         else:rows.append({'symbol':sym,'price':None,'change':None,'pct':None,'currency':'','exchange':'Unavailable','session':'Unavailable','date':'Unknown','source':'Unavailable'})
-    title='Philippine local stocks' if region=='PH' else ('Malaysia local stocks' if region=='MY' else f'{region} local stocks')
+    meta=_MARKET_CONTEXTS.get(region,{})
+    title=f"{meta.get('name',region)} stocks"
+    if not rows:
+        return "💜 I recognized the market, but its default stock universe is unavailable. I won't render an empty market table."
     verified=sum(1 for r in rows if isinstance(r.get('price'),(int,float)))
     unavailable=len(rows)-verified
     result=MARKET_TABLE_CSS+_market_table_html(f'{title} — current market quotes',rows)
@@ -966,7 +1028,19 @@ def run_v171_regression_matrix():
         if got!=want:failures.append((q,want,got))
     return {'passed':not failures,'failures':failures,'cases':len(cases)}
 
+def run_global_market_universe_tests():
+    cases={'Tabulate USA stocks':'US','Tabulate Canada stocks':'CA','Tabulate Japan stocks':'JP','Tabulate Hong Kong stocks':'HK','Tabulate Singapore stocks':'SG','Tabulate Malaysia stocks':'MY','Tabulate Philippines stocks':'PH','Tabulate UK stocks':'UK','Tabulate Germany stocks':'DE','Tabulate France stocks':'FR','Tabulate India stocks':'IN','Tabulate South Korea stocks':'KR','Tabulate Taiwan stocks':'TW','Tabulate Australia stocks':'AU','Tabulate New Zealand stocks':'NZ','Tabulate Brazil stocks':'BR','Tabulate Mexico stocks':'MX'}
+    failures=[]
+    for q,want in cases.items():
+        req=_market_table_request(q);got=(req or {}).get('region');syms=_market_table_symbols(q,10)
+        if got!=want or not syms:failures.append((q,want,got,len(syms)))
+    extra=[('Tabulate USA technology stocks','US','technology'),('Tabulate US banks','US','banks'),('Tabulate Japanese automakers','JP','automakers'),('Tabulate Philippine banks','PH','banks'),('Tabulate Singapore banks','SG','banks')]
+    for q,region,sector in extra:
+        if (_market_table_request(q) or {}).get('region')!=region or _sector_from_query(q)!=sector or not _market_table_symbols(q,10):failures.append((q,region,sector))
+    return {'passed':not failures,'failures':failures,'countries':len(cases),'sector_cases':len(extra)}
+
 def self_test():
+    assert run_global_market_universe_tests()['passed'], run_global_market_universe_tests()['failures']
     assert run_v171_regression_matrix()['passed'], run_v171_regression_matrix()['failures']
     # Regression: never reproduce an invented $185.12 when evidence says $378.73.
     y={'title':'Tesla, Inc. (TSLA) Historical Prices','body':'At close: October 5 at 4:00:01 PM EDT. Oct 5, 2026 close $378.73, volume 42,112,900.','source':'finance.yahoo.com','url':'https://finance.yahoo.com/quote/TSLA/history/'}
@@ -1035,5 +1109,5 @@ def self_test():
     dividend_text=_format_direct_quote(dividend_mock);assert '| Market cap | 15.00B USD |' in dividend_text and '| Trailing annual dividend | 2.5 USD / share |' in dividend_text and '| Trailing dividend yield | 3.50% |' in dividend_text
     return True
 
-__all__=['ENABLED','WEBSEARCH_AVAILABLE','SEARCH_AVAILABLE','web_reply','reply_is_unsure','search_sources','self_test','_extract_candidates','normalize_result','classify_web_intent','analyze_prompt','verify_evidence','grounded_synthesis_messages','_extract_market_quote','_direct_yahoo_quote','_format_direct_quote','_fetch_pse_catalog','_pse_symbol_from_query','_parse_pse_directory_html','_human_money','_percent_value','_dynamic_market_intent','_market_index_from_query','_local_market_region','_private_market_entity','_market_table_request','_market_table_symbols','_format_market_table','_pse_company_id','_resolve_pse_quote','_refresh_pse_company_ids','semantic_intent','run_v171_regression_matrix','research_depth','research_plan','adaptive_research','provider_health','web_explain']
+__all__=['ENABLED','WEBSEARCH_AVAILABLE','SEARCH_AVAILABLE','web_reply','reply_is_unsure','search_sources','self_test','_extract_candidates','normalize_result','classify_web_intent','analyze_prompt','verify_evidence','grounded_synthesis_messages','_extract_market_quote','_direct_yahoo_quote','_format_direct_quote','_fetch_pse_catalog','_pse_symbol_from_query','_parse_pse_directory_html','_human_money','_percent_value','_dynamic_market_intent','_market_index_from_query','_local_market_region','_private_market_entity','_market_table_request','_market_table_symbols','_format_market_table','_pse_company_id','_resolve_pse_quote','_refresh_pse_company_ids','semantic_intent','run_v171_regression_matrix','research_depth','research_plan','adaptive_research','provider_health','web_explain','run_global_market_universe_tests','_sector_from_query']
 if __name__=='__main__':print('self_test:','PASS' if self_test() else 'FAIL')
