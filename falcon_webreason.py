@@ -5,7 +5,7 @@ from html import unescape
 from datetime import datetime, timezone
 from urllib.parse import urlparse
 
-APP_NAME='Purple Falcon PH'; VERSION='18.0.0'
+APP_NAME='Purple Falcon PH'; VERSION='18.1.0'
 ENABLED=os.getenv('PF_WEBREASON','1').strip().lower() not in ('0','false','no','off')
 MEMORY_FILE=os.getenv('PF_MEMORY_FILE','purple_falcon_memory.json')
 MAX_RESULTS=10; MIN_SOURCES=2
@@ -804,7 +804,7 @@ def verify_evidence(query,items):
     return {'accepted':accepted,'domains':domains,'sufficient':bool(accepted),'confidence':'HIGH' if len(domains)>=3 else 'MEDIUM' if len(domains)>=2 else 'LOW'}
 
 # ==================================================
-# v18.0 ADAPTIVE CONVERSATIONAL BRAIN
+# v18.1 UNIVERSAL DECISION BRAIN
 # ==================================================
 from dataclasses import dataclass, field
 from typing import Any, Dict, List
@@ -843,31 +843,62 @@ def _brain_reconstruct(message):
 
 @dataclass
 class BrainDecision:
-    intent:str="STATIC"; action:str="DEFER_TO_LOCAL"; language:str="en"; known:Dict[str,Any]=field(default_factory=dict); missing:List[str]=field(default_factory=list); question:str=""; reconstructed:str=""; research_depth:int=0; response_depth:str="CONCISE"
+    goal:str="answer"; intent:str="STATIC"; domain:str="general"; action:str="DEFER_TO_LOCAL"; language:str="en"
+    entities:List[str]=field(default_factory=list); known:Dict[str,Any]=field(default_factory=dict); missing:List[str]=field(default_factory=list)
+    freshness_required:bool=False; risk_level:str="LOW"; evidence_required:bool=False
+    research_depth:int=0; response_depth:str="CONCISE"; allow_local_brain:bool=True; allow_model_memory:bool=True
+    reconstructed:str=""; clarification_question:str=""
+
+def _universal_intent(message,reconstructed):
+    low=clean_query(reconstructed).lower(); sem=semantic_intent(reconstructed); intent=sem.get('type','STATIC')
+    decision_market=bool(re.search(r'\b(?:buy|sell|hold|entry|exit|worth buying|should i buy|should i sell|bumili|bibili|benta|ibenta|hold ko|good entry)\b',low,re.I) and (_MARKET_RE.search(low) or _brain_entities(reconstructed)))
+    if decision_market:return 'MARKET_DECISION_ANALYSIS'
+    if intent=='MARKET_QUOTE' and re.search(r'\b(?:analysis|technical|trend|momentum|rsi|macd|support|resistance)\b',low,re.I):return 'MARKET_TECHNICAL_ANALYSIS'
+    if intent=='MARKET_TABLE' and re.search(r'\bcompare\b',low,re.I) and len(_brain_entities(reconstructed))>=2:return 'MARKET_COMPARISON'
+    if re.search(r'\bweather|forecast|temperature|rain|humidity|storm|typhoon\b',low,re.I):return 'WEATHER'
+    return intent
+
+def _decision_domain(intent,message):
+    if intent.startswith('MARKET_'):return 'finance'
+    if intent in {'OFFICEHOLDER','NEWS_RESEARCH','WEATHER','CURRENT_FACT','VERIFY_RESEARCH','REVERIFY'}:return 'current_world'
+    if re.search(r'\b(?:code|python|javascript|api|bug|error|debug)\b',message or '',re.I):return 'technology'
+    if re.search(r'\b(?:travel|trip|flight|hotel|visa)\b',message or '',re.I):return 'travel'
+    return 'general'
 
 def brain_decide(message,history=None):
-    original=clean_query(message); lang=_brain_language(original); reconstructed=_brain_reconstruct(original); sem=semantic_intent(reconstructed); intent=sem.get("type","STATIC"); ents=_brain_entities(reconstructed); missing=[]; question=""
-    if re.match(r"^\s*(?:compare|comparison)\s*(?:stocks?|shares?)?\s*[?!.]*$",original,re.I) and len(ents)<2 and len(_BRAIN_STATE.get("entities",[]))<2:
-        missing=["comparison_targets"]; question=_brain_say(lang,"Sure. Which stocks, companies, or markets do you want to compare?","Sige. Aling stocks, companies, o markets ang gusto mong i-compare?","Boleh. Saham, syarikat, atau pasaran mana yang anda mahu bandingkan?")
-    elif re.search(r"\blaptop\b",original,re.I) and not re.search(r"\b(?:budget|programming|gaming|office|ai|video|school|work)\b",original,re.I):
-        missing=["primary_use"]; question=_brain_say(lang,"Sure. What will you mainly use the laptop for?","Sige. Ano mainly ang paggagamitan mo ng laptop?","Boleh. Laptop itu terutama untuk kegunaan apa?")
-    elif re.search(r"\b(?:analyze|analyse|review|summarize)\b.*\b(?:file|report|document|pdf|excel|csv)\b",original,re.I) and not re.search(r"\b(?:attached|uploaded|this file|this report)\b",original,re.I):
-        missing=["file"]; question=_brain_say(lang,"Sure. Please attach the file you want me to analyze.","Sige. I-attach mo lang yung file na gusto mong ipa-analyze.","Boleh. Sila lampirkan fail yang anda mahu saya analisis.")
-    elif re.search(r"\b(?:travel|trip|vacation|visit)\b",original,re.I) and not re.search(r"\b(?:from|depart|date|dates|when|kailan|mula|galing)\b",original,re.I):
-        missing=["dates_or_origin"]; question=_brain_say(lang,"Sure. What dates are you considering, and where will you depart from?","Sige. Anong dates mo at saan ka manggagaling?","Boleh. Tarikh bila dan anda akan bertolak dari mana?")
-    action="ASK_USER" if missing else ("SEARCH" if intent!="STATIC" else "DEFER_TO_LOCAL")
-    depth=research_depth(reconstructed) if action=="SEARCH" else 0
-    response="DEEP" if intent in {"DEEP_RESEARCH","MARKET_EXPLANATION"} else ("CONCISE" if len(original.split())<=6 else "STANDARD")
-    return BrainDecision(intent,action,lang,{"entities":ents},missing,question,reconstructed,depth,response)
+    original=clean_query(message);lang=_brain_language(original);reconstructed=_brain_reconstruct(original);intent=_universal_intent(original,reconstructed);entities=_brain_entities(reconstructed);domain=_decision_domain(intent,reconstructed);missing=[];question=''
+    if re.match(r'^\s*(?:compare|comparison)\s*(?:stocks?|shares?)?\s*[?!.]*$',original,re.I) and len(entities)<2 and len(_BRAIN_STATE.get('entities',[]))<2:
+        missing=['comparison_targets'];question=_brain_say(lang,'Sure. Which stocks, companies, or markets do you want to compare?','Sige. Aling stocks, companies, o markets ang gusto mong i-compare?','Boleh. Saham, syarikat, atau pasaran mana yang anda mahu bandingkan?')
+    elif re.search(r'\blaptop\b',original,re.I) and not re.search(r'\b(?:budget|programming|gaming|office|ai|video|school|work)\b',original,re.I):
+        missing=['primary_use'];question=_brain_say(lang,'Sure. What will you mainly use the laptop for?','Sige. Ano mainly ang paggagamitan mo ng laptop?','Boleh. Laptop itu terutama untuk kegunaan apa?')
+    elif re.search(r'\b(?:analyze|analyse|review|summarize)\b.*\b(?:file|report|document|pdf|excel|csv)\b',original,re.I) and not re.search(r'\b(?:attached|uploaded|this file|this report)\b',original,re.I):
+        missing=['file'];question=_brain_say(lang,'Sure. Please attach the file you want me to analyze.','Sige. I-attach mo lang yung file na gusto mong ipa-analyze.','Boleh. Sila lampirkan fail yang anda mahu saya analisis.')
+    elif re.search(r'\b(?:travel|trip|vacation|visit)\b',original,re.I) and not re.search(r'\b(?:from|depart|date|dates|when|kailan|mula|galing)\b',original,re.I):
+        missing=['dates_or_origin'];question=_brain_say(lang,'Sure. What dates are you considering, and where will you depart from?','Sige. Anong dates mo at saan ka manggagaling?','Boleh. Tarikh bila dan anda akan bertolak dari mana?')
+    fresh=intent in {'OFFICEHOLDER','NEWS_RESEARCH','WEATHER','CURRENT_FACT','VERIFY_RESEARCH','REVERIFY','MARKET_QUOTE','MARKET_TABLE','MARKET_OVERVIEW','MARKET_COMPARISON','MARKET_EXPLANATION','MARKET_DECISION_ANALYSIS','MARKET_TECHNICAL_ANALYSIS'} or bool(_FRESH_RE.search(reconstructed))
+    high=intent in {'MARKET_DECISION_ANALYSIS'}
+    risk='HIGH' if high else ('MEDIUM' if domain in {'finance','current_world'} else 'LOW')
+    evidence=fresh or risk=='HIGH'
+    allow_local=not fresh and risk!='HIGH'; allow_memory=not fresh
+    if missing:action='ASK_USER'
+    elif intent in {'MARKET_QUOTE','MARKET_TABLE','MARKET_OVERVIEW','MARKET_COMPARISON','MARKET_DECISION_ANALYSIS','MARKET_TECHNICAL_ANALYSIS'}:action='MARKET_ANALYSIS'
+    elif intent in {'OFFICEHOLDER','NEWS_RESEARCH','WEATHER','CURRENT_FACT','VERIFY_RESEARCH','DEEP_RESEARCH','MARKET_EXPLANATION'}:action='WEB_RESEARCH'
+    elif intent=='REVERIFY':action='VERIFY'
+    elif intent=='STATIC':action='DEFER_TO_LOCAL'
+    else:action='WEB_RESEARCH' if fresh else 'DEFER_TO_LOCAL'
+    depth=max(3,research_depth(reconstructed)) if risk=='HIGH' else (research_depth(reconstructed) if action in {'MARKET_ANALYSIS','WEB_RESEARCH','VERIFY'} else 0)
+    response='DEEP' if intent in {'DEEP_RESEARCH','MARKET_EXPLANATION','MARKET_COMPARISON'} else ('CONCISE' if len(original.split())<=6 else 'STANDARD')
+    return BrainDecision(intent.lower(),intent,domain,action,lang,entities,{'entities':entities},missing,fresh,risk,evidence,depth,response,allow_local,allow_memory,reconstructed,question)
 
 def _brain_commit(d,message):
     ents=list(_BRAIN_STATE.get("entities",[]))
-    for x in d.known.get("entities",[]):
+    for x in d.entities:
         if x not in ents:ents.append(x)
-    _BRAIN_STATE.update({"goal":d.intent.lower(),"entities":ents[-6:],"last_intent":d.intent,"last_user":message,"language":d.language})
+    _BRAIN_STATE.update({"goal":d.goal,"entities":ents[-6:],"last_intent":d.intent,"last_user":message,"language":d.language})
 
 def brain_explain(message):
-    d=brain_decide(message); return "\n".join(["Brain: Purple Falcon",f"Intent: {d.intent}",f"Action: {d.action}",f"Language: {d.language}",f"Research depth: {d.research_depth}",f"Response depth: {d.response_depth}",f"Known entities: {', '.join(d.known.get('entities') or []) or 'None'}",f"Missing: {', '.join(d.missing) or 'None'}"])
+    d=brain_decide(message)
+    return '\n'.join(['Brain: Purple Falcon',f'Intent: {d.intent}',f'Domain: {d.domain}',f'Action: {d.action}',f'Language: {d.language}',f'Freshness required: {d.freshness_required}',f'Risk: {d.risk_level}',f'Evidence required: {d.evidence_required}',f'Local Brain allowed: {d.allow_local_brain}',f'Model memory allowed: {d.allow_model_memory}',f'Research depth: {d.research_depth}',f'Response depth: {d.response_depth}',f"Known entities: {', '.join(d.entities) or 'None'}",f"Missing: {', '.join(d.missing) or 'None'}"])
 
 def brain_state(): return "Brain state\n"+"\n".join(f"- {k}: {v}" for k,v in _BRAIN_STATE.items())
 
@@ -1062,15 +1093,21 @@ def web_reply(message,call_ai=None,ai_failed_check=None,system_prompt=None,brain
         return brain_explain(target) if target else 'No active question to explain yet.'
     if cmd=='/brain state':return brain_state()
     decision=brain_decide(message,history); _brain_commit(decision,message)
-    if decision.action=='ASK_USER':return decision.question
+    if decision.action=='ASK_USER':return decision.clarification_question
     message=decision.reconstructed or message
     query=clean_query(message);kind=semantic_intent(query).get('type')
     if kind=='STATIC':return None
     if kind=='MARKET_TABLE':return _format_market_table(query)
-    if kind in {'MARKET_QUOTE','MARKET_OVERVIEW'}:
+    universal_kind=decision.intent
+    if universal_kind in {'MARKET_DECISION_ANALYSIS','MARKET_TECHNICAL_ANALYSIS','MARKET_COMPARISON'}:
+        kind=universal_kind
+    if kind in {'MARKET_QUOTE','MARKET_OVERVIEW','MARKET_DECISION_ANALYSIS','MARKET_TECHNICAL_ANALYSIS'}:
         sem=semantic_intent(query);symbol=sem.get('symbol') or _symbol_from_query(query)
         direct=(_resolve_pse_quote(symbol) if symbol and str(symbol).upper().endswith('.PS') else _direct_yahoo_quote(symbol)) if symbol else None
-        if direct:return _format_direct_quote(direct)
+        if direct and kind in {'MARKET_QUOTE','MARKET_OVERVIEW'}:return _format_direct_quote(direct)
+        if direct and kind in {'MARKET_DECISION_ANALYSIS','MARKET_TECHNICAL_ANALYSIS'}:
+            base=_format_direct_quote(direct)
+            return base+'\n\n**Scenario analysis:** Use the verified quote and observed technical evidence to assess bullish, neutral, and bearish conditions. This is market analysis, not a personalized instruction to buy or sell.'
         sources=search_sources(intent_queries(query))
         if not sources:return "💜 I couldn't verify a current market value from the available providers. I won't guess a price."
         return _market_quote_answer(query,sources)
@@ -1116,7 +1153,7 @@ def run_global_market_universe_tests():
     return {'passed':not failures,'failures':failures,'countries':len(cases),'sector_cases':len(extra)}
 
 def run_v18_conversational_brain_tests():
-    checks=[('Compare stocks','ASK_USER'),('I need a laptop','ASK_USER'),('Analyze my report','ASK_USER'),('I want to travel Japan','ASK_USER'),('Tabulate USA stocks','SEARCH'),('Who is the current Prime Minister of Japan?','SEARCH'),('Explain recursion','DEFER_TO_LOCAL')]
+    checks=[('Compare stocks','ASK_USER'),('I need a laptop','ASK_USER'),('Analyze my report','ASK_USER'),('I want to travel Japan','ASK_USER'),('Tabulate USA stocks','MARKET_ANALYSIS'),('Who is the current Prime Minister of Japan?','WEB_RESEARCH'),('Explain recursion','DEFER_TO_LOCAL')]
     failures=[]
     for q,want in checks:
         d=brain_decide(q)
@@ -1125,7 +1162,25 @@ def run_v18_conversational_brain_tests():
     if brain_decide('Boleh compare saham Maybank?').language!='ms':failures.append(('Malay','ms'))
     return {'passed':not failures,'failures':failures,'cases':len(checks)+2}
 
+def run_v181_universal_decision_tests():
+    cases={
+      'can I buy Tesla or sell?':('MARKET_DECISION_ANALYSIS','MARKET_ANALYSIS',False,True,'HIGH'),
+      'BDO okay ba bumili?':('MARKET_DECISION_ANALYSIS','MARKET_ANALYSIS',False,True,'HIGH'),
+      'Who is the current Prime Minister of Japan?':('OFFICEHOLDER','WEB_RESEARCH',False,True,'MEDIUM'),
+      'latest AI news':('NEWS_RESEARCH','WEB_RESEARCH',False,True,'MEDIUM'),
+      'why PSE down today?':('MARKET_EXPLANATION','WEB_RESEARCH',False,True,'MEDIUM'),
+      'Tabulate USA stocks':('MARKET_TABLE','MARKET_ANALYSIS',False,True,'MEDIUM'),
+      'Explain recursion':('STATIC','DEFER_TO_LOCAL',True,False,'LOW')}
+    failures=[]
+    for q,want in cases.items():
+        d=brain_decide(q);got=(d.intent,d.action,d.allow_local_brain,d.evidence_required,d.risk_level)
+        if got!=want:failures.append((q,want,got))
+    d=brain_decide('Compare stocks')
+    if d.action!='ASK_USER' or not d.missing:failures.append(('Compare stocks','ASK_USER',d.action,d.missing))
+    return {'passed':not failures,'failures':failures,'cases':len(cases)+1}
+
 def self_test():
+    assert run_v181_universal_decision_tests()['passed'], run_v181_universal_decision_tests()['failures']
     assert run_v18_conversational_brain_tests()['passed'], run_v18_conversational_brain_tests()['failures']
     assert run_global_market_universe_tests()['passed'], run_global_market_universe_tests()['failures']
     assert run_v171_regression_matrix()['passed'], run_v171_regression_matrix()['failures']
@@ -1196,5 +1251,5 @@ def self_test():
     dividend_text=_format_direct_quote(dividend_mock);assert '| Market cap | 15.00B USD |' in dividend_text and '| Trailing annual dividend | 2.5 USD / share |' in dividend_text and '| Trailing dividend yield | 3.50% |' in dividend_text
     return True
 
-__all__=['ENABLED','WEBSEARCH_AVAILABLE','SEARCH_AVAILABLE','web_reply','reply_is_unsure','search_sources','self_test','_extract_candidates','normalize_result','classify_web_intent','analyze_prompt','verify_evidence','grounded_synthesis_messages','_extract_market_quote','_direct_yahoo_quote','_format_direct_quote','_fetch_pse_catalog','_pse_symbol_from_query','_parse_pse_directory_html','_human_money','_percent_value','_dynamic_market_intent','_market_index_from_query','_local_market_region','_private_market_entity','_market_table_request','_market_table_symbols','_format_market_table','_pse_company_id','_resolve_pse_quote','_refresh_pse_company_ids','semantic_intent','run_v171_regression_matrix','research_depth','research_plan','adaptive_research','provider_health','web_explain','run_global_market_universe_tests','_sector_from_query','BrainDecision','brain_decide','brain_explain','brain_state','run_v18_conversational_brain_tests']
+__all__=['ENABLED','WEBSEARCH_AVAILABLE','SEARCH_AVAILABLE','web_reply','reply_is_unsure','search_sources','self_test','_extract_candidates','normalize_result','classify_web_intent','analyze_prompt','verify_evidence','grounded_synthesis_messages','_extract_market_quote','_direct_yahoo_quote','_format_direct_quote','_fetch_pse_catalog','_pse_symbol_from_query','_parse_pse_directory_html','_human_money','_percent_value','_dynamic_market_intent','_market_index_from_query','_local_market_region','_private_market_entity','_market_table_request','_market_table_symbols','_format_market_table','_pse_company_id','_resolve_pse_quote','_refresh_pse_company_ids','semantic_intent','run_v171_regression_matrix','research_depth','research_plan','adaptive_research','provider_health','web_explain','run_global_market_universe_tests','_sector_from_query','BrainDecision','brain_decide','brain_explain','brain_state','run_v18_conversational_brain_tests','run_v181_universal_decision_tests']
 if __name__=='__main__':print('self_test:','PASS' if self_test() else 'FAIL')
