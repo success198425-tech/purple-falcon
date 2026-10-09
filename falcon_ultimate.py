@@ -276,6 +276,47 @@ try:
     WEBREASON_STATUS = "✅ authoritative web reasoning" if getattr(webreason, "ENABLED", True) else "◻ off (PF_WEBREASON=0)"
 except Exception as e:
     webreason, WEBREASON_STATUS = None, f"⚠️ falcon_webreason unavailable ({e.__class__.__name__})"
+# ==================================================
+# 🧠 FALCON BRAIN v1
+# ==================================================
+
+PF_BRAIN_MODE = os.getenv(
+    "PF_BRAIN_MODE",
+    "shadow"
+).strip().lower()
+
+if PF_BRAIN_MODE not in {
+    "legacy",
+    "shadow",
+    "primary"
+}:
+    PF_BRAIN_MODE = "shadow"
+
+falcon_brain = None
+
+BRAIN_STATUS = (
+    "⚠️ Brain unavailable"
+)
+
+try:
+
+    falcon_brain = FalconBrain(
+        webreason=webreason
+    )
+
+    BRAIN_STATUS = (
+        f"✅ Brain v1 "
+        f"({PF_BRAIN_MODE.upper()})"
+    )
+
+except Exception as e:
+
+    falcon_brain = None
+
+    BRAIN_STATUS = (
+        f"⚠️ Brain unavailable "
+        f"({e.__class__.__name__})"
+    )
 
 # ==================================================
 # 🧠 LOCAL LEARNING BRAIN  (falcon_reasoning.py)
