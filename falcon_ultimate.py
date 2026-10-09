@@ -343,6 +343,7 @@ print("   News:          ✅ live RSS feeds (no key needed)")
 print(f"   File analyst:  {ANALYST_STATUS}")
 print(f"   Live skills:   {SKILLS_STATUS}")
 print(f"   Web search:    {WEB_STATUS}")
+print(f"   Brain v1:     {BRAIN_STATUS}")
 _ai_chain = ["🐵 Peepak Local", "Gemini", "Groq", "OpenRouter"]
 if HF_API_KEY:
     _ai_chain.append("Hugging Face")
@@ -5412,8 +5413,75 @@ def run_current_followup_guard_tests():
     if falcon_external_needed('explain recursion'): failures.append(('false-current','explain recursion'))
     if not _VERIFY_FOLLOWUP_RE.match('sure?'): failures.append(('missed-followup','sure?'))
     return {'passed':not failures,'failures':failures,'cases':len(cases)+2}
-
 def chat_reply(message, paths, request=None):
+
+    _brain_cmd = (message or "").strip()
+
+    if _brain_cmd.lower() == "/brain health":
+
+        if not falcon_brain:
+
+            return (
+                f"🧠 Brain v1\n\n"
+                f"❌ {BRAIN_STATUS}",
+                []
+            )
+
+        info = brain_health(
+            falcon_brain
+        )
+
+        checks = "\n".join(
+            f"{'✅' if v else '❌'} {k}"
+            for k, v in info["checks"].items()
+        )
+
+        return (
+            f"🧠 Brain v1\n\n"
+            f"Mode: {PF_BRAIN_MODE.upper()}\n"
+            f"Status: {info['status']}\n\n"
+            f"{checks}",
+            []
+        )
+
+    if _brain_cmd.lower() == "/brain metrics":
+
+        m = metrics()
+
+        lines = [
+            "🧠 Brain Metrics",
+            "",
+            f"Total Decisions: {m['total']}",
+            "",
+            "Actions:"
+        ]
+
+        for action, count in sorted(
+            m["actions"].items(),
+            key=lambda x: x[1],
+            reverse=True
+        ):
+            lines.append(
+                f"• {action}: {count}"
+            )
+
+        if m["intents"]:
+
+            lines.append("")
+            lines.append("Top Intents:")
+
+            for intent, count in sorted(
+                m["intents"].items(),
+                key=lambda x: x[1],
+                reverse=True
+            )[:15]:
+
+                lines.append(
+                    f"• {intent}: {count}"
+                )
+
+        return "\n".join(lines), []
+
     if not paths:
         if re.search(r"^\s*local brain test\s*[?!.]*$",message or '',re.I):
             return local_brain_health(), []
