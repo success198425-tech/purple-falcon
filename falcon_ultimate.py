@@ -5410,7 +5410,14 @@ def chat_reply(message, paths, request=None):
         _brain_history = load_chat(request).get("messages", [])[-8:] if request is not None else None
     except Exception:
         _brain_history = None
-    _brain_cid = stable_user_key(request) if request is not None else "default"
+   try:
+    identity, _scope = stable_conversation_identity(request)
+    _brain_cid = identity or "default"
+except Exception:
+    try:
+        _brain_cid = getattr(request, "session_hash", None) or "default"
+    except Exception:
+        _brain_cid = "default"
     _brain_cmd = (message or "").strip()
     if _brain_cmd.lower() == "/brain health":
         if not falcon_brain_v1: return f"🧠 **Purple Falcon Brain v1**\n\nMode: **{PF_BRAIN_MODE.upper()}**\n\n❌ {BRAIN_V1_STATUS}", []
@@ -5432,8 +5439,20 @@ def chat_reply(message, paths, request=None):
         legacy = reasoning_plan(target, [], is_coding_request(target)) if PF_ORCHESTRATOR else {'route':'legacy','needs_web':False,'needs_live':False}
         return _brain_v1_summary(d)+"\n\n**Legacy router snapshot**\n```\n"+json.dumps(legacy,ensure_ascii=False,indent=2)+"\n```", []
     _brain_shadow_decision = None
-    if PF_BRAIN_MODE in {"shadow", "primary"}:
-        _brain_shadow_decision = _brain_v1_decide(message,_brain_history,_brain_cid)
+if PF_BRAIN_MODE in {"shadow", "primary"}:
+    try:
+        _brain_shadow_decision = _brain_v1_decide(
+            message,
+            _brain_history,
+            _brain_cid
+        )
+    except Exception as e:
+        print(
+            f"⚠️ Brain shadow failed: "
+            f"{e.__class__.__name__}: {e}"
+        )
+
+        _brain_shadow_decision = None
         if PF_BRAIN_MODE == "shadow" and _brain_shadow_decision:
             print(f"🧠 SHADOW intent={_brain_shadow_decision.intent} action={_brain_shadow_decision.action} risk={_brain_shadow_decision.risk_level} local={_brain_shadow_decision.allow_local_brain} msg={(message or '')[:80]!r}")
     if PF_BRAIN_MODE == "primary" and _brain_shadow_decision:
