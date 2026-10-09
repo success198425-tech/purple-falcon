@@ -5416,6 +5416,86 @@ def run_current_followup_guard_tests():
 def chat_reply(message, paths, request=None):
 
     _brain_cmd = (message or "").strip()
+  print(
+    "BRAIN COMMAND:",
+    repr(_brain_cmd)
+)
+  if _brain_cmd.lower().startswith("/brain compare"):
+
+    target = (
+        _brain_cmd.replace(
+            "/brain compare",
+            ""
+        ).strip()
+    )
+
+    if not target:
+
+        return (
+            "Usage: /brain compare <prompt>",
+            []
+        )
+
+    if not falcon_brain:
+
+        return (
+            "🧠 Brain v1 unavailable",
+            []
+        )
+
+    try:
+
+        decision = falcon_brain.decide(
+            target
+        )
+
+        return (
+            f"""
+🧠 Brain Comparison
+
+Prompt:
+{target}
+
+Intent:
+{decision.intent}
+
+Domain:
+{decision.domain}
+
+Action:
+{decision.action}
+
+Risk:
+{decision.risk_level}
+
+Freshness Required:
+{decision.freshness_required}
+
+Evidence Required:
+{decision.evidence_required}
+
+Local Brain Allowed:
+{decision.allow_local_brain}
+
+Model Memory Allowed:
+{decision.allow_model_memory}
+
+Research Depth:
+{decision.research_depth}
+
+Response Depth:
+{decision.response_depth}
+""".strip(),
+            []
+        )
+
+    except Exception as e:
+
+        return (
+            f"🧠 Brain compare failed: "
+            f"{e.__class__.__name__}: {e}",
+            []
+        )
 
     if _brain_cmd.lower() == "/brain health":
 
