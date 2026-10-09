@@ -44,6 +44,9 @@ import requests
 import gradio as gr
 from PIL import Image, ImageDraw, ImageFont
 import time
+from brain import FalconBrain
+from brain.brain_health import brain_health
+from brain.brain_metrics import metrics
 
 # Before each API call
 time.sleep(0.5)  # Half-second gap
