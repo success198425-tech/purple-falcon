@@ -32,8 +32,13 @@ def metrics():
 
                 total += 1
 
-                actions[row.get("action")] += 1
-                intents[row.get("intent")] += 1
+                actions[
+                    row.get("action")
+                ] += 1
+
+                intents[
+                    row.get("intent")
+                ] += 1
 
     except Exception:
 
