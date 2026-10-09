@@ -5481,7 +5481,79 @@ def chat_reply(message, paths, request=None):
                 )
 
         return "\n".join(lines), []
+if _brain_cmd.lower().startswith("/brain compare"):
 
+    target = (
+        _brain_cmd.replace(
+            "/brain compare",
+            ""
+        ).strip()
+    )
+
+    if not target:
+
+        return (
+            "Usage: /brain compare <prompt>",
+            []
+        )
+
+    if not falcon_brain:
+
+        return (
+            "🧠 Brain v1 unavailable",
+            []
+        )
+
+    try:
+
+        decision = falcon_brain.decide(
+            target
+        )
+
+        return (
+            f"""
+🧠 Brain Comparison
+
+Prompt:
+{target}
+
+Intent:
+{decision.intent}
+
+Domain:
+{decision.domain}
+
+Action:
+{decision.action}
+
+Risk:
+{decision.risk_level}
+
+Freshness Required:
+{decision.freshness_required}
+
+Evidence Required:
+{decision.evidence_required}
+
+Local Brain Allowed:
+{decision.allow_local_brain}
+
+Model Memory Allowed:
+{decision.allow_model_memory}
+
+Research Depth:
+{decision.research_depth}
+""".strip(),
+            []
+        )
+
+    except Exception as e:
+
+        return (
+            f"🧠 Brain compare failed: "
+            f"{e.__class__.__name__}: {e}",
+            []
+        )
     if not paths:
         if re.search(r"^\s*local brain test\s*[?!.]*$",message or '',re.I):
             return local_brain_health(), []
