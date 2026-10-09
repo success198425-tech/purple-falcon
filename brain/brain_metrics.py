@@ -1,10 +1,11 @@
 import json
 import os
+
 from collections import Counter
 
 LEDGER_FILE = os.getenv(
     "PF_BRAIN_LEDGER",
-    "data/purple_falcon_brain_ledger.jsonl"
+    "purple_falcon_brain_ledger.jsonl"
 )
 
 def metrics():
@@ -33,11 +34,15 @@ def metrics():
                 total += 1
 
                 actions[
-                    row.get("action")
+                    row.get(
+                        "action"
+                    )
                 ] += 1
 
                 intents[
-                    row.get("intent")
+                    row.get(
+                        "intent"
+                    )
                 ] += 1
 
     except Exception:
