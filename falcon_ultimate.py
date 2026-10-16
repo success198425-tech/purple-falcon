@@ -5409,9 +5409,12 @@ def run_current_followup_guard_tests():
     cases=['Who is the current Prime Minister of Japan?','what i mean is who latest PM of Japan','Tesla stock price now','latest AI news']
     failures=[]
     for q in cases:
-        if not falcon_external_needed(q): failures.append(('missed-current',q))
-    if falcon_external_needed('explain recursion'): failures.append(('false-current','explain recursion'))
-    if not _VERIFY_FOLLOWUP_RE.match('sure?'): failures.append(('missed-followup','sure?'))
+        if not falcon_external_needed(q):
+            failures.append(('missed-current',q))
+    if falcon_external_needed('explain recursion'):
+        failures.append(('false-current','explain recursion'))
+    if not _VERIFY_FOLLOWUP_RE.match('sure?'):
+        failures.append(('missed-followup','sure?'))
     return {'passed':not failures,'failures':failures,'cases':len(cases)+2}
 def chat_reply(message, paths, request=None):
 
