@@ -46,13 +46,12 @@ from PIL import Image, ImageDraw, ImageFont
 import time
 try:
     from brain.falcon_mcp_patch import (
-        web_search,
-        web_fetch
+        mcp_web_search,
+        mcp_web_fetch
     )
 except Exception:
-    web_search = None
-    web_fetch = None
-
+    mcp_web_search = None
+    mcp_web_fetch = None
 # Before each API call
 time.sleep(0.5)  # Half-second gap
 
