@@ -8,23 +8,50 @@ MEMORY_MCP_URL=os.getenv("MEMORY_MCP_URL","https://falcon-memory-mcp.onrender.co
 
 URL_RE=re.compile(r"https?://\S+",re.I)
 
-def mcp_web_search(query,limit=5):
+def mcp_web_search(query, limit=5):
+
     try:
-        r=requests.post(f"{WEB_MCP_URL}/search",json={"query":query,"limit":limit},timeout=30)
-        if r.status_code==200:
-            return r.json()
+
+        r = requests.post(
+            f"{WEB_MCP_URL}/search",
+            json={
+                "query": query,
+                "limit": limit
+            },
+            timeout=30
+        )
+
+        return {
+            "status_code": r.status_code,
+            "body": r.text[:2000]
+        }
+
     except Exception as e:
-        return {"error":str(e)}
-    return None
+
+        return {
+            "error": str(e)
+        }
 
 def mcp_web_fetch(url):
+
     try:
-        r=requests.post(f"{WEB_MCP_URL}/fetch",json={"url":url},timeout=30)
-        if r.status_code==200:
-            return r.json()
+
+        r = requests.post(
+            f"{WEB_MCP_URL}/fetch",
+            json={"url": url},
+            timeout=30
+        )
+
+        return {
+            "status_code": r.status_code,
+            "body": r.text[:2000]
+        }
+
     except Exception as e:
-        return {"error":str(e)}
-    return None
+
+        return {
+            "error": str(e)
+        }
 
 def mcp_can_handle(message):
     m=message.lower()
