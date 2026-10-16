@@ -21,9 +21,12 @@ def mcp_web_search(query, limit=5):
             timeout=30
         )
 
+        if r.status_code == 200:
+            return r.json()
+
         return {
-            "status_code": r.status_code,
-            "body": r.text[:2000]
+            "error": f"HTTP {r.status_code}",
+            "body": r.text[:1000]
         }
 
     except Exception as e:
@@ -31,7 +34,6 @@ def mcp_web_search(query, limit=5):
         return {
             "error": str(e)
         }
-
 def mcp_web_fetch(url):
 
     try:
@@ -42,9 +44,12 @@ def mcp_web_fetch(url):
             timeout=30
         )
 
+        if r.status_code == 200:
+            return r.json()
+
         return {
-            "status_code": r.status_code,
-            "body": r.text[:2000]
+            "error": f"HTTP {r.status_code}",
+            "body": r.text[:1000]
         }
 
     except Exception as e:
@@ -52,7 +57,6 @@ def mcp_web_fetch(url):
         return {
             "error": str(e)
         }
-
 def mcp_can_handle(message):
     m=message.lower()
     kws=["search","web","internet","website","research","google","look up","find online"]
