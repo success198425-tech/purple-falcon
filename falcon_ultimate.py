@@ -5426,8 +5426,7 @@ if current_parent or current_or_dynamic_external(message):
     return (
         "💜🦅 I couldn't verify the current fact from trustworthy live evidence.",
         []
-    )
-            answer=authoritative_webreason_answer(message,request)
+    ) answer=authoritative_webreason_answer(message,request)
             if answer:
                 return answer, []
             return "💜🦅 I couldn't verify the current fact from trustworthy live evidence. I won't replace it with older model memory. Please try again after the web sources recover.", []
