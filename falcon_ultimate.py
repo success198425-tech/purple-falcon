@@ -44,6 +44,14 @@ import requests
 import gradio as gr
 from PIL import Image, ImageDraw, ImageFont
 import time
+try:
+    from brain.falcon_mcp_patch import (
+        web_search,
+        web_fetch
+    )
+except Exception:
+    web_search = None
+    web_fetch = None
 
 # Before each API call
 time.sleep(0.5)  # Half-second gap
