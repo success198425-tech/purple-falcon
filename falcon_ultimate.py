@@ -5383,8 +5383,8 @@ def chat_reply(message, paths, request=None):
         cmd_reply=local_brain_command(message)
         if cmd_reply:
             return cmd_reply, []
-                    # ==========================================
-        # MCP COMMANDS
+        # ==========================================
+        # MCP SEARCH
         # ==========================================
 
         if message.lower().startswith("/mcp-search "):
@@ -5393,7 +5393,7 @@ def chat_reply(message, paths, request=None):
 
             try:
 
-                result = web_search(query)
+                result = mcp_web_search(query)
 
                 return (
                     f"🔎 MCP SEARCH RESULT\n\n{result}",
@@ -5407,13 +5407,17 @@ def chat_reply(message, paths, request=None):
                     []
                 )
 
+        # ==========================================
+        # MCP FETCH
+        # ==========================================
+
         if message.lower().startswith("/mcp-fetch "):
 
             url = message[len("/mcp-fetch "):].strip()
 
             try:
 
-                result = web_fetch(url)
+                result = mcp_web_fetch(url)
 
                 return (
                     f"🌐 MCP FETCH RESULT\n\n{result}",
