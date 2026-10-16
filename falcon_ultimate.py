@@ -5422,10 +5422,13 @@ return (
 
                 result = mcp_web_fetch(url)
 
-                return (
-                    f"🌐 MCP FETCH RESULT\n\n{result}",
-                    []
-                )
+return (
+    json.dumps(
+        result,
+        indent=2
+    ),
+    []
+)
 
             except Exception as e:
 
