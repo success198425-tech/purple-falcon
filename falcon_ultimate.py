@@ -48,6 +48,11 @@ from brain import FalconBrain
 from brain.brain_health import brain_health
 from brain.brain_metrics import metrics
 
+from brain.falcon_mcp_patch import (
+    mcp_can_handle,
+    mcp_process,
+)
+
 # Before each API call
 time.sleep(0.5)  # Half-second gap
 
@@ -5416,6 +5421,23 @@ def run_current_followup_guard_tests():
 def chat_reply(message, paths, request=None):
 
     _brain_cmd = (message or "").strip()
+  def chat_reply(message):
+
+    if mcp_can_handle(message):
+
+        result = mcp_process(message)
+
+        return (
+            json.dumps(
+                result,
+                indent=2
+            ),
+            []
+        )
+
+    # existing logic
+
+    ...
   print(
     "BRAIN COMMAND:",
     repr(_brain_cmd)
