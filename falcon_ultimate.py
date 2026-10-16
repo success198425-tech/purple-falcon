@@ -5417,8 +5417,9 @@ def run_current_followup_guard_tests():
         failures.append(('missed-followup','sure?'))
     return {'passed':not failures,'failures':failures,'cases':len(cases)+2}
 def chat_reply(message, paths, request=None):
-
+  
     _brain_cmd = (message or "").strip()
+  
   print(
     "BRAIN COMMAND:",
     repr(_brain_cmd)
