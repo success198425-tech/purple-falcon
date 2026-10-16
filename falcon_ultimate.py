@@ -5426,7 +5426,7 @@ if current_parent or current_or_dynamic_external(message):
     return (
         "💜🦅 I couldn't verify the current fact from trustworthy live evidence.",
         []
-  )
+    )
 
 answer = authoritative_webreason_answer(
     message,
