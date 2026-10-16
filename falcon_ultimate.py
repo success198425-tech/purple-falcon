@@ -17,14 +17,7 @@
 #   ✅ Knowledge library — fully customizable
 #   ✅ Tagalog / English / Bisaya support
 # ==================================================
-try:
-    from brain.falcon_mcp_patch import (
-        mcp_web_search,
-        mcp_web_fetch,
-    )
-except Exception:
-    mcp_web_search = None
-    mcp_web_fetch = None
+
 import os
 import re
 import hashlib
@@ -5375,22 +5368,7 @@ def run_current_followup_guard_tests():
     if falcon_external_needed('explain recursion'): failures.append(('false-current','explain recursion'))
     if not _VERIFY_FOLLOWUP_RE.match('sure?'): failures.append(('missed-followup','sure?'))
     return {'passed':not failures,'failures':failures,'cases':len(cases)+2}
-def try_web_mcp(message):
-    try:
-        if not mcp_web_search:
-            return None
 
-        m = re.search(r"https?://\\S+", message or "", re.I)
-
-        if m:
-            return mcp_web_fetch(m.group(0))
-
-        return mcp_web_search(message)
-
-    except Exception as e:
-        print(f"[WEB MCP] {e}")
-
-    return None
 def chat_reply(message, paths, request=None):
     if not paths:
         if re.search(r"^\s*local brain test\s*[?!.]*$",message or '',re.I):
@@ -5402,36 +5380,8 @@ def chat_reply(message, paths, request=None):
         if deterministic:
             return deterministic['answer'], []
         current_parent=current_followup_context(message,request)
-if current_parent or current_or_dynamic_external(message):
-
-    mcp_result = try_web_mcp(message)
-
-    if mcp_result:
-        return (
-            json.dumps(
-                mcp_result,
-                indent=2
-            ),
-            []
-        )
-
-    answer = authoritative_webreason_answer(
-        message,
-        request
-    )
-
-    if answer:
-        return answer, []
-
-    return (
-        "💜🦅 I couldn't verify the current fact from trustworthy live evidence.",
-        []
-    )
-
-answer = authoritative_webreason_answer(
-    message,
-    request
-)
+        if current_parent or current_or_dynamic_external(message):
+            answer=authoritative_webreason_answer(message,request)
             if answer:
                 return answer, []
             return "💜🦅 I couldn't verify the current fact from trustworthy live evidence. I won't replace it with older model memory. Please try again after the web sources recover.", []
