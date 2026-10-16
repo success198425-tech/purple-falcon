@@ -5395,10 +5395,13 @@ def chat_reply(message, paths, request=None):
 
                 result = mcp_web_search(query)
 
-                return (
-                    f"🔎 MCP SEARCH RESULT\n\n{result}",
-                    []
-                )
+return (
+    json.dumps(
+        result,
+        indent=2
+    ),
+    []
+)
 
             except Exception as e:
 
