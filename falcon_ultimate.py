@@ -5420,11 +5420,9 @@ def run_current_followup_guard_tests():
 def chat_reply(message, paths, request=None):
 
     _brain_cmd = (message or "").strip()
-  def chat_reply(message):
+    if mcp_can_handle(_brain_cmd):
 
-    if mcp_can_handle(message):
-
-        result = mcp_process(message)
+        result = mcp_process(_brain_cmd)
 
         return (
             json.dumps(
