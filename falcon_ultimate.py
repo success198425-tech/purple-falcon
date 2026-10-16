@@ -5387,55 +5387,54 @@ def chat_reply(message, paths, request=None):
         # MCP SEARCH
         # ==========================================
 
-        if message.lower().startswith("/mcp-search "):
+       if message.lower().startswith("/mcp-search "):
 
-            query = message[len("/mcp-search "):].strip()
+    query = message[len("/mcp-search "):].strip()
 
-            try:
+    try:
 
-                result = mcp_web_search(query)
+        result = mcp_web_search(query)
 
-return (
-    json.dumps(
-        result,
-        indent=2
-    ),
-    []
-)
+        return (
+            json.dumps(
+                result,
+                indent=2
+            ),
+            []
+        )
 
-            except Exception as e:
+    except Exception as e:
 
-                return (
-                    f"❌ MCP Search Error\n\n{e}",
-                    []
-                )
-
+        return (
+            f"❌ MCP Search Error\n\n{e}",
+            []
+        )
         # ==========================================
         # MCP FETCH
         # ==========================================
 
-        if message.lower().startswith("/mcp-fetch "):
+if message.lower().startswith("/mcp-fetch "):
 
-            url = message[len("/mcp-fetch "):].strip()
+    url = message[len("/mcp-fetch "):].strip()
 
-            try:
+    try:
 
-                result = mcp_web_fetch(url)
+        result = mcp_web_fetch(url)
 
-return (
-    json.dumps(
-        result,
-        indent=2
-    ),
-    []
-)
+        return (
+            json.dumps(
+                result,
+                indent=2
+            ),
+            []
+        )
 
-            except Exception as e:
+    except Exception as e:
 
-                return (
-                    f"❌ MCP Fetch Error\n\n{e}",
-                    []
-                )
+        return (
+            f"❌ MCP Fetch Error\n\n{e}",
+            []
+        )
         deterministic=resolve_deterministic_intent(message)
         if deterministic:
             return deterministic['answer'], []
