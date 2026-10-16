@@ -5384,6 +5384,49 @@ def chat_reply(message, paths, request=None):
         cmd_reply=local_brain_command(message)
         if cmd_reply:
             return cmd_reply, []
+                    # ==========================================
+        # MCP COMMANDS
+        # ==========================================
+
+        if message.lower().startswith("/mcp-search "):
+
+            query = message[len("/mcp-search "):].strip()
+
+            try:
+
+                result = web_search(query)
+
+                return (
+                    f"🔎 MCP SEARCH RESULT\n\n{result}",
+                    []
+                )
+
+            except Exception as e:
+
+                return (
+                    f"❌ MCP Search Error\n\n{e}",
+                    []
+                )
+
+        if message.lower().startswith("/mcp-fetch "):
+
+            url = message[len("/mcp-fetch "):].strip()
+
+            try:
+
+                result = web_fetch(url)
+
+                return (
+                    f"🌐 MCP FETCH RESULT\n\n{result}",
+                    []
+                )
+
+            except Exception as e:
+
+                return (
+                    f"❌ MCP Fetch Error\n\n{e}",
+                    []
+                )
         deterministic=resolve_deterministic_intent(message)
         if deterministic:
             return deterministic['answer'], []
