@@ -40,7 +40,9 @@ def mcp_web_fetch(url):
 
         r = requests.post(
             f"{WEB_MCP_URL}/fetch",
-            json={"url": url},
+            json={
+                "url": url
+            },
             timeout=30
         )
 
