@@ -25,7 +25,6 @@ try:
 except Exception:
     mcp_web_search = None
     mcp_web_fetch = None
-``
 import os
 import re
 import hashlib
