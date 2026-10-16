@@ -44,9 +44,6 @@ import requests
 import gradio as gr
 from PIL import Image, ImageDraw, ImageFont
 import time
-from brain import FalconBrain
-from brain.brain_health import brain_health
-from brain.brain_metrics import metrics
 
 # Before each API call
 time.sleep(0.5)  # Half-second gap
@@ -276,47 +273,6 @@ try:
     WEBREASON_STATUS = "✅ authoritative web reasoning" if getattr(webreason, "ENABLED", True) else "◻ off (PF_WEBREASON=0)"
 except Exception as e:
     webreason, WEBREASON_STATUS = None, f"⚠️ falcon_webreason unavailable ({e.__class__.__name__})"
-# ==================================================
-# 🧠 FALCON BRAIN v1
-# ==================================================
-
-PF_BRAIN_MODE = os.getenv(
-    "PF_BRAIN_MODE",
-    "shadow"
-).strip().lower()
-
-if PF_BRAIN_MODE not in {
-    "legacy",
-    "shadow",
-    "primary"
-}:
-    PF_BRAIN_MODE = "shadow"
-
-falcon_brain = None
-
-BRAIN_STATUS = (
-    "⚠️ Brain unavailable"
-)
-
-try:
-
-    falcon_brain = FalconBrain(
-        webreason=webreason
-    )
-
-    BRAIN_STATUS = (
-        f"✅ Brain v1 "
-        f"({PF_BRAIN_MODE.upper()})"
-    )
-
-except Exception as e:
-
-    falcon_brain = None
-
-    BRAIN_STATUS = (
-        f"⚠️ Brain unavailable "
-        f"({e.__class__.__name__})"
-    )
 
 # ==================================================
 # 🧠 LOCAL LEARNING BRAIN  (falcon_reasoning.py)
@@ -343,7 +299,6 @@ print("   News:          ✅ live RSS feeds (no key needed)")
 print(f"   File analyst:  {ANALYST_STATUS}")
 print(f"   Live skills:   {SKILLS_STATUS}")
 print(f"   Web search:    {WEB_STATUS}")
-print(f"   Brain v1:     {BRAIN_STATUS}")
 _ai_chain = ["🐵 Peepak Local", "Gemini", "Groq", "OpenRouter"]
 if HF_API_KEY:
     _ai_chain.append("Hugging Face")
@@ -5409,235 +5364,12 @@ def run_current_followup_guard_tests():
     cases=['Who is the current Prime Minister of Japan?','what i mean is who latest PM of Japan','Tesla stock price now','latest AI news']
     failures=[]
     for q in cases:
-        if not falcon_external_needed(q):
-            failures.append(('missed-current',q))
-    if falcon_external_needed('explain recursion'):
-        failures.append(('false-current','explain recursion'))
-    if not _VERIFY_FOLLOWUP_RE.match('sure?'):
-        failures.append(('missed-followup','sure?'))
+        if not falcon_external_needed(q): failures.append(('missed-current',q))
+    if falcon_external_needed('explain recursion'): failures.append(('false-current','explain recursion'))
+    if not _VERIFY_FOLLOWUP_RE.match('sure?'): failures.append(('missed-followup','sure?'))
     return {'passed':not failures,'failures':failures,'cases':len(cases)+2}
+
 def chat_reply(message, paths, request=None):
-  
-    _brain_cmd = (message or "").strip()
-  
-  print(
-    "BRAIN COMMAND:",
-    repr(_brain_cmd)
-)
-  if _brain_cmd.lower().startswith("/brain compare"):
-
-    target = (
-        _brain_cmd.replace(
-            "/brain compare",
-            ""
-        ).strip()
-    )
-
-    if not target:
-
-        return (
-            "Usage: /brain compare <prompt>",
-            []
-        )
-
-    if not falcon_brain:
-
-        return (
-            "🧠 Brain v1 unavailable",
-            []
-        )
-
-    try:
-
-        decision = falcon_brain.decide(
-            target
-        )
-
-        return (
-            f"""
-🧠 Brain Comparison
-
-Prompt:
-{target}
-
-Intent:
-{decision.intent}
-
-Domain:
-{decision.domain}
-
-Action:
-{decision.action}
-
-Risk:
-{decision.risk_level}
-
-Freshness Required:
-{decision.freshness_required}
-
-Evidence Required:
-{decision.evidence_required}
-
-Local Brain Allowed:
-{decision.allow_local_brain}
-
-Model Memory Allowed:
-{decision.allow_model_memory}
-
-Research Depth:
-{decision.research_depth}
-
-Response Depth:
-{decision.response_depth}
-""".strip(),
-            []
-        )
-
-    except Exception as e:
-
-        return (
-            f"🧠 Brain compare failed: "
-            f"{e.__class__.__name__}: {e}",
-            []
-        )
-
-    if _brain_cmd.lower() == "/brain health":
-
-        if not falcon_brain:
-
-            return (
-                f"🧠 Brain v1\n\n"
-                f"❌ {BRAIN_STATUS}",
-                []
-            )
-
-        info = brain_health(
-            falcon_brain
-        )
-
-        checks = "\n".join(
-            f"{'✅' if v else '❌'} {k}"
-            for k, v in info["checks"].items()
-        )
-
-        return (
-            f"🧠 Brain v1\n\n"
-            f"Mode: {PF_BRAIN_MODE.upper()}\n"
-            f"Status: {info['status']}\n\n"
-            f"{checks}",
-            []
-        )
-
-    if _brain_cmd.lower() == "/brain metrics":
-
-        m = metrics()
-
-        lines = [
-            "🧠 Brain Metrics",
-            "",
-            f"Total Decisions: {m['total']}",
-            "",
-            "Actions:"
-        ]
-
-        for action, count in sorted(
-            m["actions"].items(),
-            key=lambda x: x[1],
-            reverse=True
-        ):
-            lines.append(
-                f"• {action}: {count}"
-            )
-
-        if m["intents"]:
-
-            lines.append("")
-            lines.append("Top Intents:")
-
-            for intent, count in sorted(
-                m["intents"].items(),
-                key=lambda x: x[1],
-                reverse=True
-            )[:15]:
-
-                lines.append(
-                    f"• {intent}: {count}"
-                )
-
-        return "\n".join(lines), []
-if _brain_cmd.lower().startswith("/brain compare"):
-
-    target = (
-        _brain_cmd.replace(
-            "/brain compare",
-            ""
-        ).strip()
-    )
-
-    if not target:
-
-        return (
-            "Usage: /brain compare <prompt>",
-            []
-        )
-
-    if not falcon_brain:
-
-        return (
-            "🧠 Brain v1 unavailable",
-            []
-        )
-
-    try:
-
-        decision = falcon_brain.decide(
-            target
-        )
-
-        return (
-            f"""
-🧠 Brain Comparison
-
-Prompt:
-{target}
-
-Intent:
-{decision.intent}
-
-Domain:
-{decision.domain}
-
-Action:
-{decision.action}
-
-Risk:
-{decision.risk_level}
-
-Freshness Required:
-{decision.freshness_required}
-
-Evidence Required:
-{decision.evidence_required}
-
-Local Brain Allowed:
-{decision.allow_local_brain}
-
-Model Memory Allowed:
-{decision.allow_model_memory}
-
-Research Depth:
-{decision.research_depth}
-""".strip(),
-            []
-        )
-
-    except Exception as e:
-
-        return (
-            f"🧠 Brain compare failed: "
-            f"{e.__class__.__name__}: {e}",
-            []
-        )
     if not paths:
         if re.search(r"^\s*local brain test\s*[?!.]*$",message or '',re.I):
             return local_brain_health(), []
