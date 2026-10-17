@@ -1,5 +1,13 @@
 import re
 import requests
+import re
+import html
+import requests
+
+try:
+    from duckduckgo_search import DDGS
+except Exception:
+    DDGS = None
 
 try:
     from duckduckgo_search import DDGS
