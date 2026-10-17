@@ -1,36 +1,34 @@
-import requests
+from duckduckgo_search import DDGS
 
 def web_search(query: str, limit: int = 5):
 
     try:
-        url = "https://api.duckduckgo.com/"
 
-        r = requests.get(
-            url,
-            params={
-                "q": query,
-                "format": "json"
-            },
-            timeout=15
-        )
+        print(f"Searching: {query}")
 
-        data = r.json()
+        with DDGS() as ddgs:
 
-        results = []
+            results = list(
+                ddgs.text(
+                    query,
+                    max_results=limit
+                )
+            )
 
-        for item in data.get("RelatedTopics", [])[:limit]:
+        print(f"Results found: {len(results)}")
 
-            if isinstance(item, dict):
-
-                results.append({
-                    "title": item.get("Text", ""),
-                    "url": item.get("FirstURL", ""),
-                    "snippet": item.get("Text", "")
-                })
-
-        return results
+        return [
+            {
+                "title": r.get("title", ""),
+                "url": r.get("href", ""),
+                "snippet": r.get("body", "")
+            }
+            for r in results
+        ]
 
     except Exception as e:
+
+        print("SEARCH ERROR:", str(e))
 
         return [{
             "error": str(e)
