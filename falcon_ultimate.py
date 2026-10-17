@@ -5384,7 +5384,7 @@ def chat_reply(message, paths, request=None):
         if cmd_reply:
             return cmd_reply, []
 
-        # ==========================================
+                # ==========================================
         # MCP SEARCH
         # ==========================================
 
@@ -5396,22 +5396,13 @@ def chat_reply(message, paths, request=None):
 
                 result = mcp_web_search(query)
 
-                results = result.get("results", [])
-
-                if not results:
-                    return "No results found.", []
-
-                output = []
-
-                for i, item in enumerate(results[:5], start=1):
-
-                    output.append(
-                        f"{i}. {item.get('title', '')}\n"
-                        f"{item.get('url', '')}\n"
-                        f"{item.get('snippet', '')}"
-                    )
-
-                return "\n\n".join(output), []
+                return (
+                    json.dumps(
+                        result,
+                        indent=2
+                    ),
+                    []
+                )
 
             except Exception as e:
 
@@ -5419,7 +5410,6 @@ def chat_reply(message, paths, request=None):
                     f"MCP Search Error:\n\n{e}",
                     []
                 )
-
         # ==========================================
         # MCP FETCH
         # ==========================================
