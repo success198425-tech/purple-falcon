@@ -5383,41 +5383,43 @@ def chat_reply(message, paths, request=None):
         cmd_reply=local_brain_command(message)
         if cmd_reply:
             return cmd_reply, []
+
         # ==========================================
         # MCP SEARCH
         # ==========================================
 
         if message.lower().startswith("/mcp-search "):
 
-    query = message[len("/mcp-search "):].strip()
+            query = message[len("/mcp-search "):].strip()
 
-    try:
+            try:
 
-        result = mcp_web_search(query)
+                result = mcp_web_search(query)
 
-        results = result.get("results", [])
+                results = result.get("results", [])
 
-        if not results:
-            return "No results found.", []
+                if not results:
+                    return "No results found.", []
 
-        output = []
+                output = []
 
-        for i, item in enumerate(results[:5], start=1):
+                for i, item in enumerate(results[:5], start=1):
 
-            output.append(
-                f"{i}. {item.get('title', '')}\n"
-                f"{item.get('url', '')}\n"
-                f"{item.get('snippet', '')}"
-            )
+                    output.append(
+                        f"{i}. {item.get('title', '')}\n"
+                        f"{item.get('url', '')}\n"
+                        f"{item.get('snippet', '')}"
+                    )
 
-        return "\n\n".join(output), []
+                return "\n\n".join(output), []
 
-    except Exception as e:
+            except Exception as e:
 
-        return (
-            f"MCP Search Error:\n\n{e}",
-            []
-        )
+                return (
+                    f"MCP Search Error:\n\n{e}",
+                    []
+                )
+
         # ==========================================
         # MCP FETCH
         # ==========================================
