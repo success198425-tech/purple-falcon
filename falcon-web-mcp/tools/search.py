@@ -1,9 +1,24 @@
+import re
 import requests
 
 try:
     from duckduckgo_search import DDGS
 except Exception:
     DDGS = None
+
+
+def clean_html(text: str) -> str:
+
+    if not text:
+        return ""
+
+    text = re.sub(r"<[^>]+>", "", text)
+    text = text.replace("&nbsp;", " ")
+    text = text.replace("&amp;", "&")
+    text = text.replace("&quot;", '"')
+    text = text.replace("&#39;", "'")
+
+    return text.strip()
 
 
 def search_duckduckgo(query, limit):
@@ -27,7 +42,9 @@ def search_duckduckgo(query, limit):
                 "source": "duckduckgo",
                 "title": r.get("title", ""),
                 "url": r.get("href", ""),
-                "snippet": r.get("body", "")
+                "snippet": clean_html(
+                    r.get("body", "")
+                )
             }
             for r in results
         ]
@@ -42,7 +59,7 @@ def search_wikipedia(query, limit):
 
     try:
 
-        r = requests.get(
+        response = requests.get(
             "https://en.wikipedia.org/w/api.php",
             params={
                 "action": "query",
@@ -50,10 +67,13 @@ def search_wikipedia(query, limit):
                 "srsearch": query,
                 "format": "json"
             },
+            headers={
+                "User-Agent": "PurpleFalconMCP/1.0"
+            },
             timeout=15
         )
 
-        data = r.json()
+        data = response.json()
 
         results = []
 
@@ -65,7 +85,9 @@ def search_wikipedia(query, limit):
                 "source": "wikipedia",
                 "title": title,
                 "url": f"https://en.wikipedia.org/wiki/{title.replace(' ', '_')}",
-                "snippet": item.get("snippet", "")
+                "snippet": clean_html(
+                    item.get("snippet", "")
+                )
             })
 
         return results
@@ -84,12 +106,15 @@ def search_google_news(query, limit):
 
         url = f"https://news.google.com/rss/search?q={query}"
 
-        xml_data = requests.get(
+        response = requests.get(
             url,
+            headers={
+                "User-Agent": "Mozilla/5.0"
+            },
             timeout=15
-        ).text
+        )
 
-        root = ET.fromstring(xml_data)
+        root = ET.fromstring(response.text)
 
         results = []
 
@@ -97,9 +122,13 @@ def search_google_news(query, limit):
 
             results.append({
                 "source": "google_news",
-                "title": item.findtext("title", ""),
+                "title": clean_html(
+                    item.findtext("title", "")
+                ),
                 "url": item.findtext("link", ""),
-                "snippet": item.findtext("description", "")
+                "snippet": clean_html(
+                    item.findtext("description", "")
+                )
             })
 
         return results
@@ -120,7 +149,7 @@ def web_search(query: str, limit: int = 5):
     results = search_duckduckgo(query, limit)
 
     if results:
-        print("Provider: DuckDuckGo")
+        print(f"Provider: DuckDuckGo ({len(results)} results)")
         return results
 
     #
@@ -129,7 +158,7 @@ def web_search(query: str, limit: int = 5):
     results = search_wikipedia(query, limit)
 
     if results:
-        print("Provider: Wikipedia")
+        print(f"Provider: Wikipedia ({len(results)} results)")
         return results
 
     #
@@ -138,17 +167,17 @@ def web_search(query: str, limit: int = 5):
     results = search_google_news(query, limit)
 
     if results:
-        print("Provider: Google News")
+        print(f"Provider: Google News ({len(results)} results)")
         return results
 
     #
-    # Fallback Result
+    # Fallback
     #
     return [
         {
             "source": "fallback",
-            "title": "No results found",
+            "title": f'No results found for "{query}"',
             "url": "",
-            "snippet": f'No search provider returned results for "{query}"'
+            "snippet": "All search providers returned empty results."
         }
     ]
