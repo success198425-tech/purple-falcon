@@ -5393,16 +5393,24 @@ def chat_reply(message, paths, request=None):
 
             try:
 
-                result = mcp_web_search(query)
+                       result = mcp_web_search(query)
 
-                return (
-                    json.dumps(
-                        result,
-                        indent=2
-                    ),
-                    []
-                )
+        results = result.get("results", [])
 
+        if not results:
+            return "No results found.", []
+
+        output = []
+
+        for i, item in enumerate(results[:5], start=1):
+
+            output.append(
+                f"{i}. {item.get('title', '')}\n"
+                f"{item.get('url', '')}\n"
+                f"{item.get('snippet', '')}"
+            )
+
+        return "\n\n".join(output), []
             except Exception as e:
 
                 return (
