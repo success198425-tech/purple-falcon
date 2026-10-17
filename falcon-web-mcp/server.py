@@ -22,8 +22,18 @@ def health_check():
     return health()
 
 @app.post("/search")
-def search(req:SearchRequest):
-    return {"results":web_search(req.query,req.limit)}
+def search(req: SearchRequest):
+
+    results = web_search(
+        req.query,
+        req.limit
+    )
+
+    return {
+        "success": True,
+        "count": len(results),
+        "results": results
+    }
 
 @app.post("/fetch")
 def fetch(req:FetchRequest):
