@@ -5415,7 +5415,7 @@ def chat_reply(message, paths, request=None):
     except Exception as e:
 
         return (
-            f"❌ MCP Search Error\n\n{e}",
+            f"MCP Search Error:\n\n{e}",
             []
         )
         # ==========================================
