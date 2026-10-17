@@ -5389,11 +5389,11 @@ def chat_reply(message, paths, request=None):
 
         if message.lower().startswith("/mcp-search "):
 
-            query = message[len("/mcp-search "):].strip()
+    query = message[len("/mcp-search "):].strip()
 
-            try:
+    try:
 
-                       result = mcp_web_search(query)
+        result = mcp_web_search(query)
 
         results = result.get("results", [])
 
@@ -5411,12 +5411,13 @@ def chat_reply(message, paths, request=None):
             )
 
         return "\n\n".join(output), []
-            except Exception as e:
 
-                return (
-                    f"❌ MCP Search Error\n\n{e}",
-                    []
-                )
+    except Exception as e:
+
+        return (
+            f"❌ MCP Search Error\n\n{e}",
+            []
+        )
         # ==========================================
         # MCP FETCH
         # ==========================================
