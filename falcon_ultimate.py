@@ -5436,7 +5436,7 @@ def chat_reply(message, paths, request=None):
                     []
                 )
 
-        deterministic = maybe_deterministic_intent(message)
+        deterministic = resolve_deterministic_intent(message)
 
         if deterministic:
             return deterministic['answer'], []
